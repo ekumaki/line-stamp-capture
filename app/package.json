@@ -1,0 +1,56 @@
+{
+  "name": "line-sticker-capture-app",
+  "version": "1.0.0",
+  "description": "LINE STORE Sticker Capture Desktop App",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-linux": "electron-builder --linux"
+  },
+  "keywords": [
+    "LINE",
+    "sticker",
+    "capture",
+    "electron"
+  ],
+  "author": "ekumaki",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "playwright": "^1.45.0"
+  },
+  "build": {
+    "appId": "com.ekumaki.line-sticker-capture",
+    "productName": "LINE Sticker Capture",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "renderer.js",
+      "capture.js",
+      "index.html",
+      "style.css",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  }
+}

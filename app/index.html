@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LINE Sticker Capture</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🖼️ LINE Sticker Capture</h1>
+            <p>LINE STOREのスタンプを個別の画像として保存します（私的利用のみ）</p>
+        </header>
+
+        <main>
+            <!-- URL入力セクション -->
+            <section class="url-section">
+                <label for="url-input">LINE STORE URL:</label>
+                <div class="url-input-group">
+                    <input 
+                        type="url" 
+                        id="url-input" 
+                        placeholder="https://store.line.me/stickershop/product/XXXXXXXX/ja"
+                        required
+                    >
+                    <button id="start-btn" class="primary-btn">開始</button>
+                </div>
+                <small class="url-help">LINE STOREのスタンプ商品ページのURLを入力してください</small>
+            </section>
+
+            <!-- ブラウザエリア -->
+            <section class="browser-section">
+                <div class="browser-header">
+                    <span class="browser-title">🌐 ブラウザ（手動ポップアップ操作用）</span>
+                    <button id="popup-help-btn" class="help-btn" title="ポップアップの閉じ方">❓</button>
+                </div>
+                <div class="browser-container">
+                    <webview 
+                        id="browser-view" 
+                        src="about:blank"
+                        style="width: 100%; height: 100%;"
+                        webpreferences="nodeIntegration=false"
+                    ></webview>
+                    <div id="browser-overlay" class="browser-overlay">
+                        <div class="overlay-content">
+                            <p>📱 ブラウザが準備中...</p>
+                            <p>URLを入力して「開始」ボタンを押してください</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 進捗表示セクション -->
+            <section class="progress-section">
+                <div class="progress-info">
+                    <span id="progress-text">待機中...</span>
+                    <span id="progress-count"></span>
+                </div>
+                <div class="progress-bar-container">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+                <div id="status-text" class="status-text">URLを入力して開始してください</div>
+            </section>
+
+            <!-- 出力先表示 -->
+            <section class="output-section">
+                <div class="output-info">
+                    <span class="output-label">📁 出力先:</span>
+                    <span id="output-path" class="output-path">未設定</span>
+                    <button id="open-folder-btn" class="secondary-btn" disabled>フォルダを開く</button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <div class="footer-content">
+                <p><strong>⚠️ 重要な注意事項</strong></p>
+                <p>このツールは<strong>私的利用のみ</strong>を目的としています。取得した画像の再配布や商用利用は禁止されています。</p>
+                <p>スタンプの著作権はLINE株式会社および各クリエイターに帰属します。</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- ヘルプモーダル -->
+    <div id="help-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>🖱️ ポップアップの閉じ方</h2>
+            <div class="help-content">
+                <p><strong>手順:</strong></p>
+                <ol>
+                    <li>ブラウザエリアに広告やキャンペーンのポップアップが表示される場合があります</li>
+                    <li>「閉じる」ボタンや「×」ボタンをクリックしてポップアップを閉じてください</li>
+                    <li>すべてのポップアップを閉じると、自動的にスタンプのキャプチャが開始されます</li>
+                    <li>ポップアップが表示されない場合は、そのまま自動処理が始まります</li>
+                </ol>
+                <p><strong>注意:</strong> ポップアップが完全に閉じられていないと、キャプチャした画像に広告が写り込む可能性があります。</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

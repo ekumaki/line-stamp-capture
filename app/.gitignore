@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+
+# App specific
+captures/
+
+# Electron
+*.asar
+
+# Package files
+*.dmg
+*.exe
+*.AppImage
+*.deb
+*.rpm
