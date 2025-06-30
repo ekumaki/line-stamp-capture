@@ -9,15 +9,15 @@ Write-Host ""
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Write-Host "Project Directory: $ScriptDir" -ForegroundColor Cyan
 
-# Check for start-app-final.bat existence
-$BatchFile = Join-Path $ScriptDir "start-app-final.bat"
+# Check for start-app.bat existence
+$BatchFile = Join-Path $ScriptDir "start-app.bat"
 if (-not (Test-Path $BatchFile)) {
-    Write-Host "ERROR: start-app-final.bat not found" -ForegroundColor Red
+    Write-Host "ERROR: start-app.bat not found" -ForegroundColor Red
     Read-Host "Press Enter to exit..."
     exit 1
 }
 
-Write-Host "SUCCESS: start-app-final.bat found" -ForegroundColor Green
+Write-Host "SUCCESS: start-app.bat found" -ForegroundColor Green
 
 # Get desktop path
 $DesktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)

@@ -167,6 +167,34 @@ class StickerCapture {
         const originalUrl = this.page.url();
         console.log(`📄 元のURL: ${originalUrl}`);
         
+        // バナークリックを防止するJavaScriptを注入
+        await this.page.evaluate(() => {
+            // 全てのリンクとクリック可能要素のクリックを無効化
+            const clickableElements = document.querySelectorAll('a, button, [onclick], [class*="banner"], [class*="ad"]');
+            clickableElements.forEach(element => {
+                element.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🚫 クリックをブロック:', element);
+                }, true);
+                
+                // hrefを一時的に無効化
+                if (element.tagName === 'A') {
+                    element.dataset.originalHref = element.href;
+                    element.href = 'javascript:void(0)';
+                }
+            });
+            
+            // ページ上部のバナー要素を特別に無効化
+            const banners = document.querySelectorAll('[class*="banner"], [class*="campaign"], [class*="ad"], header a');
+            banners.forEach(banner => {
+                banner.style.pointerEvents = 'none';
+                banner.style.cursor = 'default';
+            });
+            
+            console.log(`🚫 ${clickableElements.length}個の要素のクリックをブロックしました`);
+        });
+        
         const popupIndicators = [
             ':has-text("メッセージを長押し")',
             ':has-text("リアクション")', 
@@ -372,97 +400,84 @@ class StickerCapture {
     async findStickerElements() {
         console.log('🔍 スタンプ要素を検索中...');
 
-        // LINE STOREの実際の構造に基づくスタンプセレクター
-        const mainStickerSelectors = [
-            // メインスタンプリスト（LINE STOREの標準構造）
-            '.mdCMN09Ul .mdCMN09Li .mdCMN09Image',
-            '.mdCMN09Ul li img[src*="sticker"]',
-            // 商品詳細ページのスタンプグリッド
-            '.MdIco01Ul .mdCMN09Li img',
-            '.MdIco01Ul li img[src*="sticker"]',
-            // 代替セレクター（構造変更対応）
-            'ul[class*="mdCMN09"] li img[src*="sticker"]',
-            'ul li img[src*="obs.line-scdn.net"][src*="sticker"]',
-            // より広範囲なスタンプ検索（フォールバック）
-            'img[src*="sticker"][src*="obs.line-scdn.net"]'
+        // まず、ページの基本情報を取得
+        const pageInfo = await this.page.evaluate(() => {
+            return {
+                url: window.location.href,
+                title: document.title,
+                bodyClasses: document.body?.className || '',
+                allImages: document.querySelectorAll('img').length,
+                hasStickers: document.querySelectorAll('img[src*="sticker"]').length
+            };
+        });
+        console.log('📄 ページ情報:', pageInfo);
+
+        // 段階的にセレクターを試行
+        const selectorGroups = [
+            {
+                name: 'LINE STORE 標準構造',
+                selectors: [
+                    '.mdCMN09Ul .mdCMN09Li .mdCMN09Image',
+                    '.mdCMN09Ul li img[src*="sticker"]',
+                    '.MdIco01Ul .mdCMN09Li img',
+                    '.MdIco01Ul li img[src*="sticker"]'
+                ]
+            },
+            {
+                name: '代替構造検索',
+                selectors: [
+                    'ul[class*="mdCMN09"] li img[src*="sticker"]',
+                    'ul li img[src*="obs.line-scdn.net"][src*="sticker"]',
+                    'li img[src*="sticker"][src*="obs.line"]'
+                ]
+            },
+            {
+                name: '広範囲検索',
+                selectors: [
+                    'img[src*="sticker"][src*="obs.line-scdn.net"]',
+                    'img[src*="sticker"]',
+                    'img[src*="obs.line"][alt*="sticker"]'
+                ]
+            }
         ];
 
         let bestElements = [];
         let maxCount = 0;
+        let foundGroupName = '';
 
-        for (const selector of mainStickerSelectors) {
-            try {
-                await this.page.waitForTimeout(500);
-                const count = await this.page.locator(selector).count();
-                console.log(`🔍 セレクター '${selector}': ${count}個の要素`);
+        // 段階的にセレクターグループを試行
+        for (const group of selectorGroups) {
+            console.log(`🎯 ${group.name}で検索中...`);
+            
+            for (const selector of group.selectors) {
+                try {
+                    await this.page.waitForTimeout(300);
+                    const count = await this.page.locator(selector).count();
+                    console.log(`  🔍 '${selector}': ${count}個`);
 
-                if (count > 0) {
-                    // 要素の詳細情報を取得（関連スタンプエリアを厳密に除外）
-                    const elementInfo = await this.page.evaluate((sel) => {
+                    if (count > 0) {
+                        // 要素の詳細情報を取得
+                        const elementInfo = await this.page.evaluate((sel) => {
                         const elements = document.querySelectorAll(sel);
                         const uniqueImages = new Map();
 
                         Array.from(elements).forEach((el, index) => {
-                            // 除外エリアのチェック（サンプル、関連、推奨スタンプ）
-                            let parentElement = el.parentElement;
-                            let isInExcludedArea = false;
-                            
-                            // 親要素を最大7レベルまでチェック（サンプルエリア含む）
-                            for (let i = 0; i < 7 && parentElement; i++) {
-                                const className = parentElement.className || '';
-                                const id = parentElement.id || '';
-                                
-                                // 除外するエリアの判定を強化
-                                if (className.includes('related') || 
-                                    className.includes('recommend') || 
-                                    className.includes('similar') ||
-                                    className.includes('mdCMN12') ||
-                                    className.includes('sample') ||
-                                    className.includes('preview') ||
-                                    className.includes('example') ||
-                                    id.includes('related') ||
-                                    id.includes('recommend') ||
-                                    id.includes('sample') ||
-                                    id.includes('preview')) {
-                                    isInExcludedArea = true;
-                                    break;
-                                }
-                                parentElement = parentElement.parentElement;
-                            }
-
-                            if (isInExcludedArea) {
-                                return; // 除外エリアの画像はスキップ
-                            }
-
                             const rect = el.getBoundingClientRect();
                             let src = el.src || el.dataset.src || el.dataset.original || '';
                             
-                            // メインスタンプの判定条件を厳密化
-                            const isStickerImage = src.includes('sticker') && 
-                                                 (src.includes('obs.line') || src.includes('stickershop'));
+                            // 基本的なスタンプ判定（まずは見つけることを優先）
+                            const isStickerImage = src.includes('sticker') || 
+                                                 src.includes('obs.line') ||
+                                                 el.alt?.includes('sticker') ||
+                                                 el.className?.includes('sticker');
                             
-                            // 位置による除外を強化（スタンプリストエリアのみ）
-                            const isInMainStickerArea = rect.y > 200 && rect.y < window.innerHeight * 2; // ヘッダー下からメインエリア
+                            // 基本的なサイズチェック
+                            const hasValidSize = rect.width >= 50 && rect.height >= 50;
                             
-                            // スタンプリスト内かどうかの判定
-                            let isInStickerList = false;
-                            let checkParent = el.parentElement;
-                            for (let i = 0; i < 5 && checkParent; i++) {
-                                const className = checkParent.className || '';
-                                if (className.includes('mdCMN09Ul') || 
-                                    className.includes('StickerList') ||
-                                    className.includes('stickerList') ||
-                                    className.includes('MdIco01Ul')) {
-                                    isInStickerList = true;
-                                    break;
-                                }
-                                checkParent = checkParent.parentElement;
-                            }
+                            // 画面内にあるかチェック
+                            const isVisible = rect.width > 0 && rect.height > 0 && rect.y >= 0;
                             
-                            // 十分なサイズがあるかチェック
-                            const hasValidSize = rect.width >= 80 && rect.height >= 80;
-                            
-                            if (isStickerImage && hasValidSize && isInMainStickerArea && isInStickerList && rect.width > 0 && rect.height > 0) {
+                            if (isStickerImage && hasValidSize && isVisible) {
                                 // 高解像度版のURLを探す
                                 let highResSrc = src;
                                 if (src.includes('/w/')) {
@@ -495,22 +510,36 @@ class StickerCapture {
                         return Array.from(uniqueImages.values());
                     }, selector);
 
-                    console.log(`📊 セレクター '${selector}': ${elementInfo.length}個のメインスタンプを発見`);
+                        console.log(`📊 セレクター '${selector}': ${elementInfo.length}個のスタンプを発見`);
 
-                    if (elementInfo.length > maxCount) {
-                        maxCount = elementInfo.length;
-                        bestElements = elementInfo;
-                        console.log(`✅ 新しい最良セレクター: '${selector}' (${elementInfo.length}個のメインスタンプ)`);
+                        if (elementInfo.length > maxCount) {
+                            maxCount = elementInfo.length;
+                            bestElements = elementInfo;
+                            foundGroupName = group.name;
+                            console.log(`✅ 新しい最良セレクター: '${selector}' (${elementInfo.length}個)`);
+                        }
                     }
+                } catch (error) {
+                    console.error(`セレクターエラー '${selector}':`, error);
                 }
-            } catch (error) {
-                console.error(`セレクターエラー '${selector}':`, error);
+            }
+            
+            // このグループで十分な数が見つかったら次のグループはスキップ
+            if (bestElements.length >= 20) {
+                console.log(`🎯 ${group.name}で十分な数(${bestElements.length}個)を発見、検索終了`);
+                break;
             }
         }
 
         if (bestElements.length > 0) {
-            console.log(`🎯 最終選択: ${bestElements.length}個のメインスタンプ要素を発見`);
+            console.log(`🎯 最終選択: ${bestElements.length}個のスタンプ要素を発見 (${foundGroupName})`);
             console.log(`📍 位置範囲: Y軸 ${Math.min(...bestElements.map(e => e.y))} - ${Math.max(...bestElements.map(e => e.y))}`);
+            
+            // 最初の5個の詳細を表示
+            console.log('📋 発見されたスタンプ（最初の5個）:');
+            bestElements.slice(0, 5).forEach((el, i) => {
+                console.log(`  ${i + 1}. ${el.src} (${el.width}x${el.height}, Y:${el.y})`);
+            });
             
             // 位置でソート（上から下、左から右）
             bestElements.sort((a, b) => {

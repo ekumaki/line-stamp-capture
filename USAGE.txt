@@ -1,0 +1,85 @@
+LINE Sticker Capture App - Usage Guide
+=======================================
+
+📱 LINE STOREのスタンプを個別にキャプチャするデスクトップアプリケーション
+
+🔧 Requirements
+---------------
+✅ Windows 10/11
+✅ Node.js 18.0+ (https://nodejs.org/)
+✅ Internet connection
+
+🚀 Quick Start
+--------------
+1. Double-click "setup.bat" to install
+2. Double-click desktop shortcut "LINE Sticker Capture" to start
+3. Enter LINE STORE URL and click "Start"
+
+📋 Detailed Setup
+-----------------
+1. Initial Setup:
+   - Run setup.bat
+   - Follow the prompts
+   - Desktop shortcut will be created automatically
+
+2. Starting the App:
+   Method 1: Double-click "LINE Sticker Capture" on desktop
+   Method 2: Double-click "start-app.bat" directly
+
+3. Using the App:
+   a) Enter LINE STORE sticker page URL
+      Example: https://store.line.me/stickershop/product/1234567/ja
+   b) Click "Start" button
+   c) Browser will open automatically
+   d) Manually close any popup advertisements
+   e) Stickers will be captured automatically
+   f) Files are saved to: app/captures/
+
+📁 File Structure
+-----------------
+line-stamp-capture/
+├── setup.bat                    ← Run this first
+├── start-app.bat               ← App launcher
+├── create-shortcut.ps1         ← Desktop shortcut creator
+├── app/                        ← Main application
+│   ├── captures/               ← Captured images saved here
+│   └── ...
+├── README.md                   ← Full documentation
+└── USAGE.txt                   ← This file
+
+⚠️ Important Notes
+------------------
+- Keep command prompt window open while using the app
+- GPU warnings in console are normal and don't affect functionality
+- For personal use only - respect copyright laws
+- Internet connection required for first-time dependency installation
+
+🔧 Manual Setup (if setup.bat fails)
+------------------------------------
+1. Install Node.js from https://nodejs.org/
+2. Open command prompt in project directory
+3. Run: cd app && npm install
+4. Right-click create-shortcut.ps1 > Run with PowerShell
+
+🆘 Troubleshooting
+------------------
+Problem: App won't start
+Solution: Check Node.js is installed, run setup.bat as administrator
+
+Problem: Browser doesn't open
+Solution: Ensure Chrome browser is installed
+
+Problem: No stickers captured
+Solution: Make sure to close all popups manually before proceeding
+
+Problem: Shortcut creation fails
+Solution: Run PowerShell as administrator and execute create-shortcut.ps1
+
+📞 Support
+----------
+- Check console output for error details
+- Ensure all system requirements are met
+- For personal use only
+
+Version: 1.0.0
+Last Updated: 2025-06-30
