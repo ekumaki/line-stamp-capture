@@ -195,8 +195,20 @@ function updateCaptureProgress(current, total, message) {
     progressBar.style.width = `${percentage}%`;
     progressCount.textContent = total > 0 ? `${current}/${total}` : '';
     
-    // ステージに応じたメッセージ表示
-    if (current <= 10) {
+    // ステージに応じたメッセージ表示とポップアップ状態の明確化
+    if (message && message.includes('ポップアップ')) {
+        // ポップアップ関連のメッセージ
+        if (message.includes('検出されませんでした')) {
+            statusText.textContent = '✅ ポップアップなし - 自動で処理を続行';
+            progressText.textContent = 'スタンプを検索中...';
+        } else if (message.includes('手動で閉じてください')) {
+            statusText.textContent = '🚨 ポップアップを手動で閉じてください（ブラウザ画面で×ボタンかESCキー）';
+            progressText.textContent = 'ポップアップ対応待ち...';
+        } else if (message.includes('閉じられました')) {
+            statusText.textContent = '✅ ポップアップ解決 - 処理を続行';
+            progressText.textContent = 'スタンプを検索中...';
+        }
+    } else if (current <= 10) {
         progressText.textContent = '初期化中...';
     } else if (current <= 20) {
         progressText.textContent = 'ページ読み込み中...';

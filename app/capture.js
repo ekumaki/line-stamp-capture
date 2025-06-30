@@ -200,27 +200,32 @@ class StickerCapture {
 
         // 手動クローズ待機
         for (let remaining = waitSeconds; remaining > 0; remaining -= 5) {
-            console.log(`🖱️ ポップアップを手動で閉じてください... 残り ${remaining} 秒`);
-            await this.page.waitForTimeout(5000);
-
-            // ポップアップが閉じられたかチェック
-            let stillExists = false;
-            for (const indicator of popupIndicators) {
+            // ポップアップの状態を詳細チェック
+            let popupStatus = [];
+            let hasPopups = false;
+            
+            for (const indicator of popupIndicators.slice(0, 8)) {
                 try {
                     const count = await this.page.locator(indicator).count();
                     if (count > 0) {
-                        stillExists = true;
-                        break;
+                        popupStatus.push(`${indicator}: ${count}個`);
+                        hasPopups = true;
                     }
                 } catch (error) {
                     // 無視
                 }
             }
 
-            if (!stillExists) {
-                console.log('✅ ポップアップが閉じられました');
+            if (hasPopups) {
+                console.log(`🚨 ポップアップ検出: ${popupStatus.join(', ')}`);
+                console.log(`🖱️ ポップアップを手動で閉じてください... 残り ${remaining} 秒`);
+                console.log(`💡 ヒント: ×ボタンをクリックするか、ESCキーを押してください`);
+            } else {
+                console.log('✅ ポップアップが閉じられました（自動検出）');
                 return true;
             }
+
+            await this.page.waitForTimeout(5000);
         }
 
         // 追加クリーンアップ試行
@@ -324,20 +329,28 @@ class StickerCapture {
     async findStickerElements() {
         console.log('🔍 スタンプ要素を検索中...');
 
+        // より包括的なセレクター
         const selectors = [
+            'img[src*="sticker_png"]',
+            'img[src*="sticker.png"]',
+            'img[src*="/sticker/"]',
+            'img[src*="obs.line-scdn.net"]',
+            'img[src*="stickershop"]',
             '.mdCMN09Image',
-            'li img[src*="stickershop"]',
-            'img[src*="sticker"]',
             '.FnStickerPreviewItem img',
+            'li img[data-src*="sticker"]',
+            'img[data-original*="sticker"]',
+            '.sticker img',
             '[class*="Sticker"] img',
-            'img[src*="obs.line"]'
+            '[class*="sticker"] img'
         ];
 
-        let elements = [];
+        let bestElements = [];
+        let maxCount = 0;
 
         for (const selector of selectors) {
             try {
-                await this.page.waitForTimeout(1000);
+                await this.page.waitForTimeout(500);
                 const count = await this.page.locator(selector).count();
                 console.log(`🔍 セレクター '${selector}': ${count}個の要素`);
 
@@ -345,32 +358,61 @@ class StickerCapture {
                     // 要素の詳細情報を取得
                     const elementInfo = await this.page.evaluate((sel) => {
                         const elements = document.querySelectorAll(sel);
-                        return Array.from(elements).map((el, index) => {
+                        const uniqueImages = new Map();
+
+                        Array.from(elements).forEach((el, index) => {
                             const rect = el.getBoundingClientRect();
-                            const src = el.src || '';
+                            let src = el.src || el.dataset.src || el.dataset.original || '';
                             
-                            // スタンプ画像かどうかの判定
+                            // スタンプ画像かどうかの判定を強化
                             const isStickerImage = src.includes('sticker') || 
                                                  src.includes('obs.line') || 
-                                                 src.includes('stickershop');
+                                                 src.includes('stickershop') ||
+                                                 src.includes('/sticker/') ||
+                                                 el.alt?.includes('sticker') ||
+                                                 el.className?.includes('sticker');
                             
-                            return {
-                                index,
-                                src,
-                                alt: el.alt || '',
-                                x: rect.x,
-                                y: rect.y,
-                                width: rect.width,
-                                height: rect.height,
-                                visible: rect.width > 0 && rect.height > 0,
-                                isSticker: isStickerImage
-                            };
-                        }).filter(el => el.isSticker && el.visible);
+                            // 十分なサイズがあるかチェック
+                            const hasValidSize = rect.width >= 80 && rect.height >= 80;
+                            
+                            if (isStickerImage && hasValidSize && rect.width > 0 && rect.height > 0) {
+                                // 高解像度版のURLを探す
+                                let highResSrc = src;
+                                if (src.includes('/w/')) {
+                                    // w/XXX を w/300 に変更
+                                    highResSrc = src.replace(/\/w\/\d+/, '/w/300');
+                                } else if (src.includes('=w')) {
+                                    // =wXXX を =w300 に変更
+                                    highResSrc = src.replace(/=w\d+/, '=w300');
+                                }
+
+                                // 重複を避けるためにsrcをキーとして使用
+                                const key = highResSrc;
+                                if (!uniqueImages.has(key)) {
+                                    uniqueImages.set(key, {
+                                        index,
+                                        src: highResSrc,
+                                        originalSrc: src,
+                                        alt: el.alt || '',
+                                        x: rect.x,
+                                        y: rect.y,
+                                        width: rect.width,
+                                        height: rect.height,
+                                        visible: true,
+                                        isSticker: true,
+                                        selector: sel
+                                    });
+                                }
+                            }
+                        });
+
+                        return Array.from(uniqueImages.values());
                     }, selector);
 
-                    if (elementInfo.length > 0) {
-                        console.log(`✅ ${elementInfo.length}個のスタンプ要素を発見`);
-                        return elementInfo;
+                    if (elementInfo.length > maxCount) {
+                        maxCount = elementInfo.length;
+                        bestElements = elementInfo;
+                        console.log(`✅ 新しい最良セレクター: '${selector}' (${elementInfo.length}個)`);
                     }
                 }
             } catch (error) {
@@ -378,8 +420,41 @@ class StickerCapture {
             }
         }
 
+        if (bestElements.length > 0) {
+            console.log(`🎯 最終選択: ${bestElements.length}個のユニークなスタンプ要素を発見`);
+            // 位置でソート（上から下、左から右）
+            bestElements.sort((a, b) => {
+                if (Math.abs(a.y - b.y) < 50) {
+                    return a.x - b.x;
+                }
+                return a.y - b.y;
+            });
+            return bestElements;
+        }
+
         console.log('❌ スタンプ要素が見つかりませんでした');
         return [];
+    }
+
+    /**
+     * 高解像度画像を直接ダウンロード
+     */
+    async downloadHighResImage(imageUrl, outputPath) {
+        try {
+            const response = await this.page.evaluate(async (url) => {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const arrayBuffer = await response.arrayBuffer();
+                return Array.from(new Uint8Array(arrayBuffer));
+            }, imageUrl);
+
+            const buffer = Buffer.from(response);
+            fs.writeFileSync(outputPath, buffer);
+            return true;
+        } catch (error) {
+            console.error(`画像ダウンロードエラー (${imageUrl}):`, error);
+            return false;
+        }
     }
 
     /**
@@ -400,6 +475,26 @@ class StickerCapture {
                     onProgress(i + 1, totalElements, `スタンプ ${i + 1}/${totalElements} をキャプチャ中...`);
                 }
 
+                console.log(`📸 処理中: ${element.src}`);
+
+                // ファイル名生成
+                const filename = `${String(capturedCount + 1).padStart(4, '0')}.png`;
+                const filepath = path.join(outputDir, filename);
+
+                // 高解像度画像の直接ダウンロードを試行
+                let success = false;
+                if (element.src && element.src.startsWith('http')) {
+                    success = await this.downloadHighResImage(element.src, filepath);
+                    if (success) {
+                        console.log(`📥 高解像度ダウンロード成功: ${filename}`);
+                        capturedCount++;
+                        continue;
+                    }
+                }
+
+                // ダウンロードが失敗した場合はスクリーンショットにフォールバック
+                console.log(`📷 スクリーンショットにフォールバック: ${filename}`);
+
                 // 要素を画面中央に表示
                 await this.page.evaluate((y) => {
                     window.scrollTo(0, Math.max(0, y - window.innerHeight / 2));
@@ -407,44 +502,56 @@ class StickerCapture {
 
                 await this.page.waitForTimeout(500);
 
+                // 高解像度スクリーンショット（2x拡大）
+                await this.page.setViewportSize({ width: 2400, height: 1600 });
+                await this.page.waitForTimeout(300);
+
                 // 要素の現在位置を再取得
-                const currentRect = await this.page.evaluate(({index, selector}) => {
-                    const elements = document.querySelectorAll(selector);
-                    const el = elements[index];
-                    if (el) {
-                        const rect = el.getBoundingClientRect();
-                        return {
-                            x: rect.x,
-                            y: rect.y,
-                            width: rect.width,
-                            height: rect.height
-                        };
+                const currentRect = await this.page.evaluate((elementData) => {
+                    // srcから要素を見つける
+                    const images = document.querySelectorAll('img');
+                    for (let img of images) {
+                        if (img.src === elementData.originalSrc || img.src === elementData.src) {
+                            const rect = img.getBoundingClientRect();
+                            return {
+                                x: rect.x,
+                                y: rect.y,
+                                width: rect.width,
+                                height: rect.height
+                            };
+                        }
                     }
                     return null;
-                }, {index: element.index, selector: '.mdCMN09Image'});
+                }, element);
 
                 if (!currentRect || currentRect.width === 0 || currentRect.height === 0) {
-                    console.log(`⚠️ 要素 ${i + 1} が非表示のためスキップ`);
+                    console.log(`⚠️ 要素 ${i + 1} が見つからないためスキップ`);
                     continue;
                 }
 
-                // スクリーンショット取得
+                // より大きなクリップサイズでスクリーンショット
+                const minSize = 250;
+                const clipWidth = Math.max(currentRect.width, minSize);
+                const clipHeight = Math.max(currentRect.height, minSize);
+                const clipX = Math.max(0, currentRect.x - (clipWidth - currentRect.width) / 2);
+                const clipY = Math.max(0, currentRect.y - (clipHeight - currentRect.height) / 2);
+
                 const screenshot = await this.page.screenshot({
                     clip: {
-                        x: Math.round(currentRect.x),
-                        y: Math.round(currentRect.y),
-                        width: Math.round(currentRect.width),
-                        height: Math.round(currentRect.height)
+                        x: Math.round(clipX),
+                        y: Math.round(clipY),
+                        width: Math.round(clipWidth),
+                        height: Math.round(clipHeight)
                     }
                 });
 
-                // ファイル保存
-                const filename = `${String(capturedCount + 1).padStart(4, '0')}.png`;
-                const filepath = path.join(outputDir, filename);
-                fs.writeFileSync(filepath, screenshot);
+                // ビューポートを元に戻す
+                await this.page.setViewportSize({ width: 1200, height: 800 });
 
+                // ファイル保存
+                fs.writeFileSync(filepath, screenshot);
                 capturedCount++;
-                console.log(`📸 キャプチャ完了: ${filename}`);
+                console.log(`📸 スクリーンショット完了: ${filename} (${clipWidth}x${clipHeight})`);
 
             } catch (error) {
                 console.error(`❌ 要素 ${i + 1} のキャプチャ失敗:`, error);
