@@ -1,0 +1,39 @@
+LINE Sticker Capture App - アイコンファイル作成手順
+
+📝 Windows用アプリアイコン (.ico) 作成方法:
+
+1. オンラインICO変換ツールを使用:
+   - https://convertio.co/jp/png-ico/
+   - https://icoconvert.com/
+   - https://favicon.io/favicon-converter/
+
+2. 推奨するアイコンデザイン:
+   - 背景色: #00c300 (LINE グリーン)
+   - アイコン: 🖼️ または 📱 
+   - サイズ: 256x256, 128x128, 64x64, 32x32, 16x16 (マルチサイズ)
+
+3. ファイル名と配置:
+   - ファイル名: app-icon.ico
+   - 配置場所: プロジェクトルート (start-app.bat と同じ場所)
+
+4. 簡易版アイコン作成手順:
+   a) Windowsペイントを開く
+   b) 256x256の新しい画像を作成
+   c) 緑色(#00c300)で塗りつぶし
+   d) 中央に白色で "LS" (LINE Sticker) と描く
+   e) PNG形式で保存
+   f) オンライン変換ツールでICO形式に変換
+   g) app-icon.ico として保存
+
+5. ショートカットアイコンの適用:
+   - create-shortcut.ps1 実行時に自動適用
+   - または手動でショートカットのプロパティから設定
+
+💡 アイコンファイルがない場合:
+   デフォルトのWindowsアイコンが使用されます（機能に影響なし）
+
+🎨 プロ向けアイコン作成:
+   - Adobe Illustrator
+   - GIMP (無料)
+   - Canva (オンライン、無料)
+   - IcoFX (Windows専用アイコンエディタ)
