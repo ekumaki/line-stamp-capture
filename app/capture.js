@@ -213,23 +213,7 @@ class StickerCapture {
 
         // 手動クローズ待機
         for (let remaining = waitSeconds; remaining > 0; remaining -= 5) {
-            // ポップアップの状態を詳細チェック
-            let popupStatus = [];
-            let hasPopups = false;
-            
-            for (const indicator of popupIndicators.slice(0, 8)) {
-                try {
-                    const count = await this.page.locator(indicator).count();
-                    if (count > 0) {
-                        popupStatus.push(`${indicator}: ${count}個`);
-                        hasPopups = true;
-                    }
-                } catch (error) {
-                    // 無視
-                }
-            }
-
-            // ページ遷移をチェック
+            // まずページ遷移をチェック（優先）
             const currentUrl = this.page.url();
             if (currentUrl !== originalUrl) {
                 console.log(`🔄 ページ遷移を検出: ${currentUrl}`);
@@ -249,6 +233,22 @@ class StickerCapture {
                 } catch (error) {
                     console.error('❌ 元のページへの復帰に失敗:', error);
                     throw new Error('ページ遷移後の復帰に失敗しました');
+                }
+            }
+
+            // ポップアップの状態を詳細チェック
+            let popupStatus = [];
+            let hasPopups = false;
+            
+            for (const indicator of popupIndicators.slice(0, 8)) {
+                try {
+                    const count = await this.page.locator(indicator).count();
+                    if (count > 0) {
+                        popupStatus.push(`${indicator}: ${count}個`);
+                        hasPopups = true;
+                    }
+                } catch (error) {
+                    // 無視
                 }
             }
 
@@ -372,16 +372,19 @@ class StickerCapture {
     async findStickerElements() {
         console.log('🔍 スタンプ要素を検索中...');
 
-        // 実際のスタンプリストのみを対象とする厳密なセレクター（サンプル除外）
+        // LINE STOREの実際の構造に基づくスタンプセレクター
         const mainStickerSelectors = [
-            // スタンプリスト（サンプル、関連、推奨を除外）
+            // メインスタンプリスト（LINE STOREの標準構造）
             '.mdCMN09Ul .mdCMN09Li .mdCMN09Image',
-            '.FnStickerList .mdCMN09Li .mdCMN09Image',
-            // 商品ページのメインスタンプグリッド
-            '.MdIco01Ul .mdCMN09Li .mdCMN09Image',
-            // スタンプリストコンテナ内の画像のみ
-            '[class*="StickerList"] .mdCMN09Li img',
-            '[class*="stickerList"] li img[src*="sticker"]'
+            '.mdCMN09Ul li img[src*="sticker"]',
+            // 商品詳細ページのスタンプグリッド
+            '.MdIco01Ul .mdCMN09Li img',
+            '.MdIco01Ul li img[src*="sticker"]',
+            // 代替セレクター（構造変更対応）
+            'ul[class*="mdCMN09"] li img[src*="sticker"]',
+            'ul li img[src*="obs.line-scdn.net"][src*="sticker"]',
+            // より広範囲なスタンプ検索（フォールバック）
+            'img[src*="sticker"][src*="obs.line-scdn.net"]'
         ];
 
         let bestElements = [];
@@ -518,6 +521,34 @@ class StickerCapture {
             });
             return bestElements;
         }
+
+        // デバッグ: ページ上のすべての画像を調査
+        console.log('🔍 デバッグ: ページ上のすべての画像を調査中...');
+        const allImages = await this.page.evaluate(() => {
+            const images = document.querySelectorAll('img');
+            return Array.from(images).map((img, index) => ({
+                index,
+                src: img.src || 'no-src',
+                alt: img.alt || 'no-alt',
+                className: img.className || 'no-class',
+                parentClassName: img.parentElement?.className || 'no-parent-class',
+                width: img.getBoundingClientRect().width,
+                height: img.getBoundingClientRect().height,
+                y: img.getBoundingClientRect().y
+            })).filter(img => 
+                img.src.includes('sticker') || 
+                img.src.includes('obs.line') ||
+                img.alt.includes('sticker') ||
+                img.className.includes('sticker')
+            );
+        });
+
+        console.log(`🔍 デバッグ: ${allImages.length}個のスタンプ関連画像を発見:`);
+        allImages.forEach((img, i) => {
+            console.log(`  ${i + 1}. ${img.src} (${img.width}x${img.height}, Y:${img.y})`);
+            console.log(`     クラス: ${img.className}`);
+            console.log(`     親クラス: ${img.parentClassName}`);
+        });
 
         console.log('❌ メインスタンプ要素が見つかりませんでした');
         return [];
