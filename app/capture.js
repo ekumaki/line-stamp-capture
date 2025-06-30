@@ -892,39 +892,15 @@ class StickerCapture {
                 'upper-unknown'
             ];
         
-        for (const areaType of priorityAreas) {
-            if (domAnalysis.stickersByArea[areaType] && domAnalysis.stickersByArea[areaType].length > 0) {
-                mainAreaCandidates = domAnalysis.stickersByArea[areaType];
-                await this.writeDebugLog(`✅ ${areaType} エリアで ${mainAreaCandidates.length}個のスタンプを発見 - メイン候補として採用`);
-                if (onProgress) {
-                    onProgress(0, 0, `メインエリア特定: ${areaType} (${mainAreaCandidates.length}個)`);
+            for (const areaType of priorityAreas) {
+                if (domAnalysis.stickersByArea[areaType] && domAnalysis.stickersByArea[areaType].length > 0) {
+                    mainAreaCandidates = domAnalysis.stickersByArea[areaType];
+                    await this.writeDebugLog(`✅ ${areaType} エリアで ${mainAreaCandidates.length}個のスタンプを発見 - メイン候補として採用`);
+                    if (onProgress) {
+                        onProgress(0, 0, `メインエリア特定: ${areaType} (${mainAreaCandidates.length}個)`);
+                    }
+                    break;
                 }
-                break;
-            }
-        }
-        
-        if (mainAreaCandidates.length === 0) {
-            // フォールバック: 最も多くのスタンプを含むエリアを選択（但し明確な除外エリアは除く）
-            const excludedAreas = ['sample', 'related', 'other-works', 'header-area', 'sidebar', 'bottom-related', 'bottom-unknown'];
-            let maxCount = 0;
-            let bestArea = '';
-            
-            await this.writeDebugLog(`\n🔄 フォールバック分析: 除外エリア以外で最大数を探索`);
-            await this.writeDebugLog(`   除外対象: ${excludedAreas.join(', ')}`);
-            
-            Object.entries(domAnalysis.stickersByArea).forEach(([areaType, stickers]) => {
-                const isExcluded = excludedAreas.includes(areaType);
-                this.writeDebugLog(`   📊 ${areaType}: ${stickers.length}個 (除外対象: ${isExcluded})`);
-                if (!isExcluded && stickers.length > maxCount) {
-                    maxCount = stickers.length;
-                    bestArea = areaType;
-                    mainAreaCandidates = stickers;
-                }
-            });
-            
-            await this.writeDebugLog(`\n🔄 フォールバック結果: ${bestArea}エリアで${mainAreaCandidates.length}個のスタンプを選択`);
-            if (onProgress) {
-                onProgress(0, 0, `フォールバック: ${bestArea} (${mainAreaCandidates.length}個)`);
             }
         }
 
