@@ -395,10 +395,30 @@ class StickerCapture {
     }
 
     /**
+     * デバッグ情報をファイルに出力
+     */
+    async writeDebugLog(message) {
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const debugFile = path.join(process.cwd(), 'debug_log.txt');
+            
+            const logEntry = `[${new Date().toISOString()}] ${message}\n`;
+            fs.appendFileSync(debugFile, logEntry);
+            
+            // コンソールにも出力
+            console.log(message);
+        } catch (error) {
+            console.log(message); // ファイル出力に失敗してもコンソールには出力
+        }
+    }
+
+    /**
      * スタンプ要素を検索
      */
-    async findStickerElements() {
-        console.log('🔍 スタンプ要素を検索中...');
+    async findStickerElements(onProgress = null) {
+        await this.writeDebugLog('🔍 スタンプ要素を検索中...');
 
         // まず、ページの基本情報を取得
         const pageInfo = await this.page.evaluate(() => {
@@ -410,13 +430,13 @@ class StickerCapture {
                 hasStickers: document.querySelectorAll('img[src*="sticker"]').length
             };
         });
-        console.log('📄 ページ情報:', pageInfo);
+        await this.writeDebugLog('📄 ページ情報: ' + JSON.stringify(pageInfo, null, 2));
 
         // 詳細なDOM構造調査を実行
-        console.log('🔍 詳細DOM構造調査を開始...');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('🚨 徹底的DOM調査モード - 参考画像のみ取得される問題を解決');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        await this.writeDebugLog('🔍 詳細DOM構造調査を開始...');
+        await this.writeDebugLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        await this.writeDebugLog('🚨 徹底的DOM調査モード - 参考画像のみ取得される問題を解決');
+        await this.writeDebugLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         const domAnalysis = await this.page.evaluate(() => {
             const analysis = {
@@ -603,11 +623,16 @@ class StickerCapture {
         });
 
         // 徹底的分析結果の詳細表示
-        console.log('\n🔥 徹底的DOM分析結果 🔥');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        await this.writeDebugLog('\n🔥 徹底的DOM分析結果 🔥');
+        await this.writeDebugLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
+        // UI経由でも主要情報を表示
+        if (onProgress) {
+            onProgress(0, 0, `DOM分析完了: ${domAnalysis.rawImageData.length}個の画像を発見`);
+        }
         
         // 1. RAW画像データの詳細表示
-        console.log(`\n📸 RAW画像データ分析: ${domAnalysis.rawImageData.length}個のスタンプ関連画像`);
+        await this.writeDebugLog(`\n📸 RAW画像データ分析: ${domAnalysis.rawImageData.length}個のスタンプ関連画像`);
         domAnalysis.rawImageData.forEach((img, i) => {
             console.log(`\n  📷 画像 ${i + 1}: ${img.src.substring(img.src.lastIndexOf('/') + 1)}`);
             console.log(`     位置: (${Math.round(img.position.x)}, ${Math.round(img.position.y)}) サイズ: ${Math.round(img.position.width)}x${Math.round(img.position.height)}`);
@@ -671,26 +696,40 @@ class StickerCapture {
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         // 🚨 34個の参考画像問題の原因特定 🚨
-        console.log('\n🚨 問題調査: 現在取得されている34個の画像の詳細分析');
+        await this.writeDebugLog('\n🚨 問題調査: 現在取得されている34個の画像の詳細分析');
         
         // すべてのスタンプ画像をY位置でソートして、どこから来ているかを調査
         const allFoundStickers = Object.values(domAnalysis.stickersByArea).flat();
         allFoundStickers.sort((a, b) => a.position.y - b.position.y);
         
-        console.log(`\n📍 発見されたスタンプの位置別詳細 (${allFoundStickers.length}個):`);
-        allFoundStickers.forEach((sticker, i) => {
-            console.log(`  📷 ${i + 1}. Y:${Math.round(sticker.position.y)} - ${sticker.areaType} - ${sticker.src.substring(sticker.src.lastIndexOf('/') + 1)}`);
-            console.log(`       親: ${sticker.parentChain[0]?.className} - "${sticker.nearbyText}"`);
-        });
+        // UI経由で主要統計を表示
+        if (onProgress) {
+            onProgress(0, 0, `画像分析完了: 合計${allFoundStickers.length}個のスタンプ画像を発見`);
+        }
+        
+        await this.writeDebugLog(`\n📍 発見されたスタンプの位置別詳細 (${allFoundStickers.length}個):`);
+        for (let i = 0; i < Math.min(10, allFoundStickers.length); i++) {
+            const sticker = allFoundStickers[i];
+            await this.writeDebugLog(`  📷 ${i + 1}. Y:${Math.round(sticker.position.y)} - ${sticker.areaType} - ${sticker.src.substring(sticker.src.lastIndexOf('/') + 1)}`);
+            await this.writeDebugLog(`       親: ${sticker.parentChain[0]?.className} - "${sticker.nearbyText}"`);
+        }
 
         // エリア別の詳細分析
-        console.log(`\n📊 エリア別統計:`);
+        await this.writeDebugLog(`\n📊 エリア別統計:`);
+        const areaStats = [];
         Object.entries(domAnalysis.stickersByArea).forEach(([areaType, stickers]) => {
             if (stickers.length > 0) {
                 const avgY = stickers.reduce((sum, s) => sum + s.position.y, 0) / stickers.length;
-                console.log(`  📍 ${areaType}: ${stickers.length}個 (平均Y位置: ${Math.round(avgY)})`);
+                const statLine = `  📍 ${areaType}: ${stickers.length}個 (平均Y位置: ${Math.round(avgY)})`;
+                areaStats.push(statLine);
+                this.writeDebugLog(statLine);
             }
         });
+
+        // UI経由でエリア統計を表示
+        if (onProgress && areaStats.length > 0) {
+            onProgress(0, 0, `エリア分析: ${areaStats.length}個のエリアでスタンプを検出`);
+        }
 
         // メインエリア候補をスコアリング
         let mainAreaCandidates = [];
@@ -1168,6 +1207,16 @@ class StickerCapture {
             onProgress = null
         } = options;
 
+        // デバッグファイルを初期化
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const debugFile = path.join(process.cwd(), 'debug_log.txt');
+            fs.writeFileSync(debugFile, `=== LINE Sticker Capture Debug Log ===\n開始時刻: ${new Date().toISOString()}\nURL: ${url}\n\n`);
+        } catch (error) {
+            console.log('デバッグファイル初期化エラー:', error);
+        }
+
         this.isCapturing = true;
 
         try {
@@ -1204,9 +1253,9 @@ class StickerCapture {
 
             // スタンプ要素検索
             if (onProgress) onProgress(60, 100, 'スタンプを検索中...');
-            const elements = await this.findStickerElements();
+            const elements = await this.findStickerElements(onProgress);
             if (elements.length === 0) {
-                throw new Error('スタンプ要素が見つかりませんでした');
+                throw new Error('スタンプ要素が見つかりませんでした - デバッグログを確認してください (debug_log.txt)');
             }
 
             // キャプチャ実行
