@@ -160,7 +160,7 @@ class StickerCapture {
     /**
      * ポップアップの手動クローズを待機
      */
-    async waitForManualPopupDismissal(waitSeconds = 30) {
+    async waitForManualPopupDismissal(waitSeconds = 30, onProgress = null) {
         console.log('🖱️ 手動ポップアップ閉じモードを開始...');
         
         const popupIndicators = [
@@ -683,7 +683,7 @@ class StickerCapture {
 
             // ポップアップ処理
             if (onProgress) onProgress(20, 100, 'ポップアップ確認中...');
-            await this.waitForManualPopupDismissal(waitSeconds);
+            await this.waitForManualPopupDismissal(waitSeconds, onProgress);
 
             // コンテンツ読み込み
             if (onProgress) onProgress(40, 100, 'コンテンツを読み込み中...');
