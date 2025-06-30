@@ -1,4 +1,4 @@
-# LINE Sticker Capture App - Desktop Shortcut Creation Script
+# LINE Sticker Capture App - Desktop Shortcut Creation Script (English)
 # PowerShell execution policy setting may be required
 # Run as administrator: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
@@ -11,16 +11,23 @@ Write-Host ""
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Write-Host "Project Directory: $ScriptDir" -ForegroundColor Cyan
 
-# Check for start-app.bat existence
-$BatchFile = Join-Path $ScriptDir "start-app.bat"
+# Check for start-app-en.bat existence first, fallback to start-app.bat
+$BatchFile = Join-Path $ScriptDir "start-app-en.bat"
 if (-not (Test-Path $BatchFile)) {
-    Write-Host "ERROR: start-app.bat not found" -ForegroundColor Red
-    Write-Host "Please place this script in the project root directory" -ForegroundColor Yellow
-    Read-Host "Press Enter to exit..."
-    exit 1
+    $BatchFile = Join-Path $ScriptDir "start-app.bat"
+    if (-not (Test-Path $BatchFile)) {
+        Write-Host "ERROR: Neither start-app-en.bat nor start-app.bat found" -ForegroundColor Red
+        Write-Host "Please place this script in the project root directory" -ForegroundColor Yellow
+        Read-Host "Press Enter to exit..."
+        exit 1
+    } else {
+        Write-Host "Using start-app.bat (Japanese version)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "Using start-app-en.bat (English version)" -ForegroundColor Green
 }
 
-Write-Host "SUCCESS: start-app.bat found" -ForegroundColor Green
+Write-Host "SUCCESS: Batch file found: $BatchFile" -ForegroundColor Green
 
 # Get desktop path
 $DesktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
@@ -41,8 +48,7 @@ try {
     $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
     
     # Set shortcut properties
-    $Shortcut.TargetPath = "$env:SystemRoot\System32\cmd.exe"
-    $Shortcut.Arguments = "/c `"cd /d `"$ScriptDir`" && start-app.bat`""
+    $Shortcut.TargetPath = $BatchFile
     $Shortcut.WorkingDirectory = $ScriptDir
     $Shortcut.Description = "LINE STORE Sticker Capture Desktop App"
     $Shortcut.WindowStyle = 1  # Normal window
@@ -88,6 +94,8 @@ try {
     Write-Host "2. Set execution policy:" -ForegroundColor White
     Write-Host "   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser" -ForegroundColor Gray
     Write-Host "3. Temporarily disable antivirus software" -ForegroundColor White
+    Write-Host "4. Create shortcut manually:" -ForegroundColor White
+    Write-Host "   Target: $BatchFile" -ForegroundColor Gray
     
     Read-Host "Press Enter to exit..."
     exit 1

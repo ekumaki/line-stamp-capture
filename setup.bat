@@ -1,52 +1,52 @@
 @echo off
 chcp 65001 >nul
-title LINE Sticker Capture App - 初期セットアップ
+title LINE Sticker Capture App - Initial Setup
 
-echo 🖼️  LINE Sticker Capture App
-echo 初期セットアップ - Windows版
+echo LINE Sticker Capture App
+echo Initial Setup - Windows Version
 echo =========================================
 echo.
 
-REM 管理者権限チェック
+REM Administrator privilege check
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ⚠️  このセットアップには管理者権限が推奨されます
+    echo WARNING: Administrator privileges are recommended for this setup
     echo.
-    echo 管理者権限で実行する方法:
-    echo 1. このファイルを右クリック
-    echo 2. 「管理者として実行」を選択
+    echo How to run as administrator:
+    echo 1. Right-click this file
+    echo 2. Select "Run as administrator"
     echo.
-    echo 続行しますか？ (y/n)
-    set /p choice="選択: "
+    echo Continue anyway? (y/n)
+    set /p choice="Choice: "
     if /i not "%choice%"=="y" (
-        echo セットアップをキャンセルしました
+        echo Setup cancelled
         pause
         exit /b 0
     )
     echo.
 )
 
-REM 現在のディレクトリをバッチファイルの場所に設定
+REM Set current directory to batch file location
 cd /d "%~dp0"
-echo 📁 セットアップディレクトリ: %CD%
+echo Setup Directory: %CD%
 echo.
 
-REM 必要なファイルの存在確認
-echo 🔍 必要なファイルをチェック中...
+REM Check for required files
+echo Checking for required files...
 set MISSING_FILES=0
 
 if not exist "start-app.bat" (
-    echo ❌ start-app.bat が見つかりません
+    echo ERROR: start-app.bat not found
     set MISSING_FILES=1
 )
 
 if not exist "create-shortcut.ps1" (
-    echo ❌ create-shortcut.ps1 が見つかりません
+    echo ERROR: create-shortcut.ps1 not found
     set MISSING_FILES=1
 )
 
 if not exist "app\package.json" (
-    echo ❌ app\package.json が見つかりません
+    echo ERROR: app\package.json not found
     set MISSING_FILES=1
 )
 
