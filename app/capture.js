@@ -584,23 +584,41 @@ class StickerCapture {
                     currentParent = currentParent.parentElement;
                 }
 
-                // エリア分類の試行
+                // エリア分類の試行（徹底的に調査）
                 let areaType = 'unknown';
                 const parentText = img.closest('div, section, article')?.textContent?.toLowerCase() || '';
                 const parentClasses = parentChain.map(p => p.className).join(' ').toLowerCase();
-
+                
+                // より詳細な分類ロジック
                 if (parentText.includes('サンプル') || parentText.includes('sample') || parentText.includes('preview')) {
                     areaType = 'sample';
-                } else if (parentText.includes('関連') || parentText.includes('related') || parentText.includes('recommend')) {
+                } else if (parentText.includes('関連') || parentText.includes('related') || parentText.includes('recommend') || parentText.includes('おすすめ')) {
                     areaType = 'related';
-                } else if (parentText.includes('他の作品') || parentText.includes('other') || parentText.includes('more')) {
+                } else if (parentText.includes('他の作品') || parentText.includes('other') || parentText.includes('more') || parentText.includes('もっと見る')) {
                     areaType = 'other-works';
-                } else if (parentClasses.includes('mdcmn09') || parentClasses.includes('stickerlist')) {
+                } else if (parentClasses.includes('mdcmn09') || parentClasses.includes('stickerlist') || parentClasses.includes('mdico01')) {
                     areaType = 'main-candidate';
                 } else if (rect.y < 300) {
                     areaType = 'header-area';
                 } else if (rect.x > window.innerWidth * 0.7) {
                     areaType = 'sidebar';
+                } else if (rect.y > 3000) {
+                    // Y位置3000以下は関連・推奨エリアの可能性が高い
+                    areaType = 'bottom-related';
+                } else if (rect.y >= 800 && rect.y <= 2500 && rect.x < window.innerWidth * 0.65) {
+                    // メインエリアの可能性が高い位置範囲
+                    areaType = 'potential-main';
+                } else {
+                    // 詳細調査のためのサブカテゴリ
+                    if (rect.y < 800) {
+                        areaType = 'upper-unknown';
+                    } else if (rect.y < 1500) {
+                        areaType = 'middle-unknown';
+                    } else if (rect.y < 2500) {
+                        areaType = 'lower-middle-unknown';
+                    } else {
+                        areaType = 'bottom-unknown';
+                    }
                 }
 
                 const stickerInfo = {
@@ -731,30 +749,54 @@ class StickerCapture {
             onProgress(0, 0, `エリア分析: ${areaStats.length}個のエリアでスタンプを検出`);
         }
 
-        // メインエリア候補をスコアリング
+        // メインエリア候補をスコアリング（改良版）
         let mainAreaCandidates = [];
-        if (domAnalysis.stickersByArea['main-candidate']) {
-            mainAreaCandidates = domAnalysis.stickersByArea['main-candidate'];
-            console.log(`\n✅ main-candidate エリアで ${mainAreaCandidates.length}個のスタンプを発見`);
-        } else {
-            // フォールバック: 最も多くのスタンプを含むエリアを選択（但し除外エリアは除く）
-            const excludedAreas = ['sample', 'related', 'other-works', 'header-area', 'sidebar'];
+        
+        await this.writeDebugLog('\n🎯 メインエリア候補の特定開始...');
+        
+        // 優先順位でエリアを確認
+        const priorityAreas = [
+            'main-candidate',
+            'potential-main', 
+            'middle-unknown',
+            'lower-middle-unknown',
+            'upper-unknown'
+        ];
+        
+        for (const areaType of priorityAreas) {
+            if (domAnalysis.stickersByArea[areaType] && domAnalysis.stickersByArea[areaType].length > 0) {
+                mainAreaCandidates = domAnalysis.stickersByArea[areaType];
+                await this.writeDebugLog(`✅ ${areaType} エリアで ${mainAreaCandidates.length}個のスタンプを発見 - メイン候補として採用`);
+                if (onProgress) {
+                    onProgress(0, 0, `メインエリア特定: ${areaType} (${mainAreaCandidates.length}個)`);
+                }
+                break;
+            }
+        }
+        
+        if (mainAreaCandidates.length === 0) {
+            // フォールバック: 最も多くのスタンプを含むエリアを選択（但し明確な除外エリアは除く）
+            const excludedAreas = ['sample', 'related', 'other-works', 'header-area', 'sidebar', 'bottom-related', 'bottom-unknown'];
             let maxCount = 0;
             let bestArea = '';
             
-            console.log(`\n🔄 フォールバック分析: 除外エリア以外で最大数を探索`);
-            console.log(`   除外対象: ${excludedAreas.join(', ')}`);
+            await this.writeDebugLog(`\n🔄 フォールバック分析: 除外エリア以外で最大数を探索`);
+            await this.writeDebugLog(`   除外対象: ${excludedAreas.join(', ')}`);
             
             Object.entries(domAnalysis.stickersByArea).forEach(([areaType, stickers]) => {
-                console.log(`   📊 ${areaType}: ${stickers.length}個 (除外対象: ${excludedAreas.includes(areaType)})`);
-                if (!excludedAreas.includes(areaType) && stickers.length > maxCount) {
+                const isExcluded = excludedAreas.includes(areaType);
+                this.writeDebugLog(`   📊 ${areaType}: ${stickers.length}個 (除外対象: ${isExcluded})`);
+                if (!isExcluded && stickers.length > maxCount) {
                     maxCount = stickers.length;
                     bestArea = areaType;
                     mainAreaCandidates = stickers;
                 }
             });
             
-            console.log(`\n🔄 フォールバック結果: ${bestArea}エリアで${mainAreaCandidates.length}個のスタンプを選択`);
+            await this.writeDebugLog(`\n🔄 フォールバック結果: ${bestArea}エリアで${mainAreaCandidates.length}個のスタンプを選択`);
+            if (onProgress) {
+                onProgress(0, 0, `フォールバック: ${bestArea} (${mainAreaCandidates.length}個)`);
+            }
         }
 
         // メインエリアが見つからない場合の詳細調査
