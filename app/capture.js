@@ -445,8 +445,53 @@ class StickerCapture {
                 suspiciousElements: [],
                 rawImageData: [],
                 cssClassAnalysis: {},
-                potentialMainElements: []
+                potentialMainElements: [],
+                emergencyMainSearch: []
             };
+
+            // 🚨 緊急メインエリア探索 🚨
+            console.log('🚨 緊急メインエリア探索を開始...');
+            
+            // 1. より幅広いセレクターでメインスタンプを探索
+            const emergencySelectors = [
+                'ul img[src*="sticker"]',
+                'li img[src*="sticker"]', 
+                '[class*="sticker"] img',
+                '[class*="Sticker"] img',
+                '[class*="mdCMN"] img[src*="sticker"]',
+                '[class*="mdIco"] img[src*="sticker"]',
+                'div[class*="09"] img[src*="sticker"]',
+                '.product img[src*="sticker"]',
+                '#sticker img[src*="sticker"]',
+                'img[src*="sticker"][src*="w/96"]',
+                'img[src*="sticker"][src*="w/180"]',
+                'img[src*="sticker"][src*="w/230"]'
+            ];
+            
+            emergencySelectors.forEach((selector, index) => {
+                try {
+                    const elements = document.querySelectorAll(selector);
+                    if (elements.length > 0) {
+                        console.log(`🔍 緊急セレクター ${index + 1}: "${selector}" -> ${elements.length}個`);
+                        elements.forEach((el, i) => {
+                            if (i < 5) { // 最初の5個のみ記録
+                                const rect = el.getBoundingClientRect();
+                                analysis.emergencyMainSearch.push({
+                                    selector,
+                                    index: i,
+                                    src: el.src,
+                                    position: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                                    className: el.className || '',
+                                    parentClassName: el.parentElement?.className || '',
+                                    grandParentClassName: el.parentElement?.parentElement?.className || ''
+                                });
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.log(`緊急セレクターエラー ${selector}:`, error);
+                }
+            });
 
             // まず、ページの全画像を徹底調査
             console.log('🔍 RAW画像データの収集中...');
@@ -644,9 +689,39 @@ class StickerCapture {
         await this.writeDebugLog('\n🔥 徹底的DOM分析結果 🔥');
         await this.writeDebugLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
+        // 🚨 緊急メインエリア探索結果の表示 🚨
+        await this.writeDebugLog('\n🚨 緊急メインエリア探索結果:');
+        if (domAnalysis.emergencyMainSearch.length > 0) {
+            await this.writeDebugLog(`✅ 緊急探索で ${domAnalysis.emergencyMainSearch.length}個の候補を発見!`);
+            
+            // セレクター別の統計
+            const selectorStats = {};
+            domAnalysis.emergencyMainSearch.forEach(item => {
+                if (!selectorStats[item.selector]) {
+                    selectorStats[item.selector] = 0;
+                }
+                selectorStats[item.selector]++;
+            });
+            
+            Object.entries(selectorStats).forEach(([selector, count]) => {
+                this.writeDebugLog(`  📍 "${selector}": ${count}個`);
+            });
+            
+            // 詳細情報（最初の10個）
+            await this.writeDebugLog('\n緊急探索詳細 (最初の10個):');
+            domAnalysis.emergencyMainSearch.slice(0, 10).forEach((item, i) => {
+                this.writeDebugLog(`  ${i + 1}. ${item.src.substring(item.src.lastIndexOf('/') + 1)} (Y:${Math.round(item.position.y)})`);
+                this.writeDebugLog(`     セレクター: "${item.selector}"`);
+                this.writeDebugLog(`     親クラス: "${item.parentClassName}"`);
+                this.writeDebugLog(`     祖父母クラス: "${item.grandParentClassName}"`);
+            });
+        } else {
+            await this.writeDebugLog('❌ 緊急探索でもメインスタンプが見つかりませんでした');
+        }
+
         // UI経由でも主要情報を表示
         if (onProgress) {
-            onProgress(0, 0, `DOM分析完了: ${domAnalysis.rawImageData.length}個の画像を発見`);
+            onProgress(0, 0, `DOM分析完了: ${domAnalysis.rawImageData.length}個の画像を発見, 緊急探索: ${domAnalysis.emergencyMainSearch.length}個`);
         }
         
         // 1. RAW画像データの詳細表示
@@ -749,19 +824,73 @@ class StickerCapture {
             onProgress(0, 0, `エリア分析: ${areaStats.length}個のエリアでスタンプを検出`);
         }
 
-        // メインエリア候補をスコアリング（改良版）
+        // メインエリア候補をスコアリング（改良版 + 緊急探索統合）
         let mainAreaCandidates = [];
         
         await this.writeDebugLog('\n🎯 メインエリア候補の特定開始...');
         
-        // 優先順位でエリアを確認
-        const priorityAreas = [
-            'main-candidate',
-            'potential-main', 
-            'middle-unknown',
-            'lower-middle-unknown',
-            'upper-unknown'
-        ];
+        // 🚨 緊急探索結果を最優先で確認 🚨
+        if (domAnalysis.emergencyMainSearch.length > 0) {
+            await this.writeDebugLog('🚨 緊急探索結果を使用してメインエリアを特定...');
+            
+            // 緊急探索結果を適切な形式に変換
+            const emergencyElements = domAnalysis.emergencyMainSearch.map((item, index) => {
+                let highResSrc = item.src;
+                if (item.src.includes('/w/')) {
+                    highResSrc = item.src.replace(/\/w\/\d+/, '/w/300');
+                } else if (item.src.includes('=w')) {
+                    highResSrc = item.src.replace(/=w\d+/, '=w300');
+                }
+
+                return {
+                    index,
+                    src: highResSrc,
+                    originalSrc: item.src,
+                    alt: '',
+                    x: item.position.x,
+                    y: item.position.y,
+                    width: item.position.width,
+                    height: item.position.height,
+                    visible: true,
+                    isSticker: true,
+                    selector: item.selector,
+                    area: 'emergency-main',
+                    className: item.className,
+                    parentClassName: item.parentClassName,
+                    grandParentClassName: item.grandParentClassName
+                };
+            });
+
+            // 位置とサイズで適切なメインスタンプをフィルタ
+            const validMainStickers = emergencyElements.filter(el => {
+                return el.width >= 80 && el.height >= 80 && // 十分なサイズ
+                       el.y > 400 && el.y < 3000 && // メインエリアの位置範囲
+                       el.x < window.innerWidth * 0.8; // サイドバー外
+            });
+
+            if (validMainStickers.length > 0) {
+                mainAreaCandidates = validMainStickers;
+                await this.writeDebugLog(`✅ 緊急探索で ${validMainStickers.length}個の有効なメインスタンプを特定!`);
+                if (onProgress) {
+                    onProgress(0, 0, `緊急探索成功: ${validMainStickers.length}個のメインスタンプを発見`);
+                }
+            } else {
+                await this.writeDebugLog('⚠️ 緊急探索結果をフィルタしたが、有効なメインスタンプが見つからない');
+            }
+        }
+        
+        // 緊急探索で見つからない場合の従来ロジック
+        if (mainAreaCandidates.length === 0) {
+            await this.writeDebugLog('🔄 従来のエリア分類ロジックにフォールバック...');
+            
+            // 優先順位でエリアを確認
+            const priorityAreas = [
+                'main-candidate',
+                'potential-main', 
+                'middle-unknown',
+                'lower-middle-unknown',
+                'upper-unknown'
+            ];
         
         for (const areaType of priorityAreas) {
             if (domAnalysis.stickersByArea[areaType] && domAnalysis.stickersByArea[areaType].length > 0) {
