@@ -163,6 +163,10 @@ class StickerCapture {
     async waitForManualPopupDismissal(waitSeconds = 30, onProgress = null) {
         console.log('🖱️ 手動ポップアップ閉じモードを開始...');
         
+        // 元のURLを保存（ページ遷移を監視するため）
+        const originalUrl = this.page.url();
+        console.log(`📄 元のURL: ${originalUrl}`);
+        
         const popupIndicators = [
             ':has-text("メッセージを長押し")',
             ':has-text("リアクション")', 
@@ -225,10 +229,34 @@ class StickerCapture {
                 }
             }
 
+            // ページ遷移をチェック
+            const currentUrl = this.page.url();
+            if (currentUrl !== originalUrl) {
+                console.log(`🔄 ページ遷移を検出: ${currentUrl}`);
+                console.log(`🔙 元のページに戻っています...`);
+                if (onProgress) {
+                    onProgress(0, 0, 'ページ遷移を検出 - 元のページに戻っています...');
+                }
+                
+                try {
+                    await this.page.goto(originalUrl, { waitUntil: 'networkidle' });
+                    await this.page.waitForTimeout(3000);
+                    console.log('✅ 元のページに正常に戻りました');
+                    if (onProgress) {
+                        onProgress(0, 0, '元のページに戻りました - 処理を続行');
+                    }
+                    return true;
+                } catch (error) {
+                    console.error('❌ 元のページへの復帰に失敗:', error);
+                    throw new Error('ページ遷移後の復帰に失敗しました');
+                }
+            }
+
             if (hasPopups) {
                 console.log(`🚨 ポップアップ検出: ${popupStatus.join(', ')}`);
                 console.log(`🖱️ ポップアップを手動で閉じてください... 残り ${remaining} 秒`);
                 console.log(`💡 ヒント: ×ボタンをクリックするか、ESCキーを押してください`);
+                console.log(`⚠️  注意: リンクをクリックしないでください（ページ遷移を防ぐため）`);
                 if (onProgress) {
                     onProgress(0, 0, `ポップアップを手動で閉じてください... 残り ${remaining} 秒`);
                 }
@@ -344,19 +372,16 @@ class StickerCapture {
     async findStickerElements() {
         console.log('🔍 スタンプ要素を検索中...');
 
-        // メインスタンプエリアのみを対象とする厳密なセレクター
+        // 実際のスタンプリストのみを対象とする厳密なセレクター（サンプル除外）
         const mainStickerSelectors = [
-            // メインスタンプリスト（関連スタンプを除外）
-            '.mdCMN09Li:not([class*="related"]):not([class*="recommend"]) .mdCMN09Image',
-            '.FnStickerList .mdCMN09Li .mdCMN09Image',
+            // スタンプリスト（サンプル、関連、推奨を除外）
             '.mdCMN09Ul .mdCMN09Li .mdCMN09Image',
-            // 商品詳細エリアのスタンプのみ
-            '.MdIco01Ul .mdCMN09Li img',
-            // メインコンテンツエリア内のスタンプ
-            '#stickerList img[src*="sticker"]',
-            'main img[src*="sticker"]',
-            // 関連スタンプエリアを明示的に除外
-            ':not(.mdCMN12):not([class*="related"]):not([class*="recommend"]):not([class*="similar"]) img[src*="sticker"]'
+            '.FnStickerList .mdCMN09Li .mdCMN09Image',
+            // 商品ページのメインスタンプグリッド
+            '.MdIco01Ul .mdCMN09Li .mdCMN09Image',
+            // スタンプリストコンテナ内の画像のみ
+            '[class*="StickerList"] .mdCMN09Li img',
+            '[class*="stickerList"] li img[src*="sticker"]'
         ];
 
         let bestElements = [];
@@ -375,29 +400,35 @@ class StickerCapture {
                         const uniqueImages = new Map();
 
                         Array.from(elements).forEach((el, index) => {
-                            // 関連スタンプエリアを除外するチェック
+                            // 除外エリアのチェック（サンプル、関連、推奨スタンプ）
                             let parentElement = el.parentElement;
-                            let isInRelatedArea = false;
+                            let isInExcludedArea = false;
                             
-                            // 親要素を最大5レベルまでチェック
-                            for (let i = 0; i < 5 && parentElement; i++) {
+                            // 親要素を最大7レベルまでチェック（サンプルエリア含む）
+                            for (let i = 0; i < 7 && parentElement; i++) {
                                 const className = parentElement.className || '';
                                 const id = parentElement.id || '';
                                 
+                                // 除外するエリアの判定を強化
                                 if (className.includes('related') || 
                                     className.includes('recommend') || 
                                     className.includes('similar') ||
                                     className.includes('mdCMN12') ||
+                                    className.includes('sample') ||
+                                    className.includes('preview') ||
+                                    className.includes('example') ||
                                     id.includes('related') ||
-                                    id.includes('recommend')) {
-                                    isInRelatedArea = true;
+                                    id.includes('recommend') ||
+                                    id.includes('sample') ||
+                                    id.includes('preview')) {
+                                    isInExcludedArea = true;
                                     break;
                                 }
                                 parentElement = parentElement.parentElement;
                             }
 
-                            if (isInRelatedArea) {
-                                return; // 関連スタンプエリアの画像はスキップ
+                            if (isInExcludedArea) {
+                                return; // 除外エリアの画像はスキップ
                             }
 
                             const rect = el.getBoundingClientRect();
@@ -407,13 +438,28 @@ class StickerCapture {
                             const isStickerImage = src.includes('sticker') && 
                                                  (src.includes('obs.line') || src.includes('stickershop'));
                             
-                            // 位置による除外（ページ下部の関連スタンプを除外）
-                            const isInMainArea = rect.y < window.innerHeight * 1.5; // ページ上部1.5画面分まで
+                            // 位置による除外を強化（スタンプリストエリアのみ）
+                            const isInMainStickerArea = rect.y > 200 && rect.y < window.innerHeight * 2; // ヘッダー下からメインエリア
+                            
+                            // スタンプリスト内かどうかの判定
+                            let isInStickerList = false;
+                            let checkParent = el.parentElement;
+                            for (let i = 0; i < 5 && checkParent; i++) {
+                                const className = checkParent.className || '';
+                                if (className.includes('mdCMN09Ul') || 
+                                    className.includes('StickerList') ||
+                                    className.includes('stickerList') ||
+                                    className.includes('MdIco01Ul')) {
+                                    isInStickerList = true;
+                                    break;
+                                }
+                                checkParent = checkParent.parentElement;
+                            }
                             
                             // 十分なサイズがあるかチェック
                             const hasValidSize = rect.width >= 80 && rect.height >= 80;
                             
-                            if (isStickerImage && hasValidSize && isInMainArea && rect.width > 0 && rect.height > 0) {
+                            if (isStickerImage && hasValidSize && isInMainStickerArea && isInStickerList && rect.width > 0 && rect.height > 0) {
                                 // 高解像度版のURLを探す
                                 let highResSrc = src;
                                 if (src.includes('/w/')) {
