@@ -414,15 +414,88 @@ class StickerCapture {
 
         // 詳細なDOM構造調査を実行
         console.log('🔍 詳細DOM構造調査を開始...');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('🚨 徹底的DOM調査モード - 参考画像のみ取得される問題を解決');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
         const domAnalysis = await this.page.evaluate(() => {
             const analysis = {
                 containerStructure: [],
                 stickersByArea: {},
-                suspiciousElements: []
+                suspiciousElements: [],
+                rawImageData: [],
+                cssClassAnalysis: {},
+                potentialMainElements: []
             };
 
-            // 主要コンテナの分析
-            const containers = document.querySelectorAll('div, section, ul, main, article');
+            // まず、ページの全画像を徹底調査
+            console.log('🔍 RAW画像データの収集中...');
+            const allImages = document.querySelectorAll('img');
+            allImages.forEach((img, index) => {
+                if (img.src && (img.src.includes('sticker') || img.src.includes('obs.line'))) {
+                    const rect = img.getBoundingClientRect();
+                    const parentHierarchy = [];
+                    let current = img.parentElement;
+                    
+                    // 親要素の階層を10レベルまで記録
+                    for (let i = 0; i < 10 && current; i++) {
+                        parentHierarchy.push({
+                            level: i,
+                            tagName: current.tagName,
+                            className: current.className || '',
+                            id: current.id || '',
+                            textContent: current.textContent ? current.textContent.substring(0, 30) : ''
+                        });
+                        current = current.parentElement;
+                    }
+                    
+                    analysis.rawImageData.push({
+                        index,
+                        src: img.src,
+                        alt: img.alt || '',
+                        className: img.className || '',
+                        id: img.id || '',
+                        position: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                        parentHierarchy,
+                        immediateParentClass: img.parentElement?.className || '',
+                        immediateParentTag: img.parentElement?.tagName || '',
+                        isVisible: rect.width > 0 && rect.height > 0
+                    });
+                }
+            });
+
+            // CSSクラス使用頻度の分析
+            console.log('🔍 CSSクラス分析中...');
+            const allElements = document.querySelectorAll('*[class]');
+            allElements.forEach(el => {
+                const classes = el.className.split(' ');
+                classes.forEach(cls => {
+                    if (cls && cls.length > 0) {
+                        if (!analysis.cssClassAnalysis[cls]) {
+                            analysis.cssClassAnalysis[cls] = {
+                                count: 0,
+                                hasStickerImages: false,
+                                elements: []
+                            };
+                        }
+                        analysis.cssClassAnalysis[cls].count++;
+                        
+                        const stickerCount = el.querySelectorAll('img[src*="sticker"]').length;
+                        if (stickerCount > 0) {
+                            analysis.cssClassAnalysis[cls].hasStickerImages = true;
+                            analysis.cssClassAnalysis[cls].elements.push({
+                                tagName: el.tagName,
+                                stickerCount,
+                                rect: el.getBoundingClientRect()
+                            });
+                        }
+                    }
+                });
+            });
+
+            // 主要コンテナの分析（強化版）
+            console.log('🔍 コンテナ構造分析中...');
+            const containers = document.querySelectorAll('div, section, ul, main, article, li');
             containers.forEach((container, index) => {
                 const className = container.className || 'no-class';
                 const id = container.id || 'no-id';
@@ -431,7 +504,10 @@ class StickerCapture {
                 
                 if (stickerImages.length > 0) {
                     const rect = container.getBoundingClientRect();
-                    analysis.containerStructure.push({
+                    const textContent = container.textContent || '';
+                    
+                    // より詳細な分析
+                    const containerData = {
                         index,
                         tagName: container.tagName,
                         className,
@@ -439,8 +515,35 @@ class StickerCapture {
                         stickerCount: stickerImages.length,
                         allImageCount: allImages.length,
                         position: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-                        textContent: container.textContent?.substring(0, 100) || 'no-text'
-                    });
+                        textContent: textContent.substring(0, 200),
+                        hasListStructure: container.tagName === 'UL' || container.tagName === 'OL',
+                        childListItems: container.querySelectorAll('li').length,
+                        estimatedType: 'unknown'
+                    };
+                    
+                    // エリア推定ロジック強化
+                    if (textContent.includes('サンプル') || textContent.includes('sample') || className.includes('sample')) {
+                        containerData.estimatedType = 'sample';
+                    } else if (textContent.includes('関連') || textContent.includes('related') || className.includes('related')) {
+                        containerData.estimatedType = 'related';
+                    } else if (textContent.includes('他の作品') || textContent.includes('おすすめ') || className.includes('recommend')) {
+                        containerData.estimatedType = 'other-works';
+                    } else if (className.includes('mdCMN09') || className.includes('MdIco01') || className.includes('sticker')) {
+                        containerData.estimatedType = 'main-candidate';
+                    } else if (stickerImages.length >= 20) {
+                        containerData.estimatedType = 'main-candidate-by-count';
+                    } else if (rect.y < 400) {
+                        containerData.estimatedType = 'header-area';
+                    } else {
+                        containerData.estimatedType = 'unknown-large';
+                    }
+                    
+                    analysis.containerStructure.push(containerData);
+                    
+                    // メイン候補の特別記録
+                    if (containerData.estimatedType.includes('main-candidate')) {
+                        analysis.potentialMainElements.push(containerData);
+                    }
                 }
             });
 
@@ -499,41 +602,112 @@ class StickerCapture {
             return analysis;
         });
 
-        // DOM分析結果を詳細表示
-        console.log('📊 DOM構造分析結果:');
-        console.log(`📦 スタンプを含むコンテナ: ${domAnalysis.containerStructure.length}個`);
+        // 徹底的分析結果の詳細表示
+        console.log('\n🔥 徹底的DOM分析結果 🔥');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
-        domAnalysis.containerStructure.forEach((container, i) => {
-            console.log(`  ${i + 1}. ${container.tagName}.${container.className} (${container.stickerCount}個のスタンプ)`);
-            console.log(`     位置: Y=${Math.round(container.position.y)}, サイズ: ${Math.round(container.position.width)}x${Math.round(container.position.height)}`);
-            console.log(`     テキスト: "${container.textContent}"`);
+        // 1. RAW画像データの詳細表示
+        console.log(`\n📸 RAW画像データ分析: ${domAnalysis.rawImageData.length}個のスタンプ関連画像`);
+        domAnalysis.rawImageData.forEach((img, i) => {
+            console.log(`\n  📷 画像 ${i + 1}: ${img.src.substring(img.src.lastIndexOf('/') + 1)}`);
+            console.log(`     位置: (${Math.round(img.position.x)}, ${Math.round(img.position.y)}) サイズ: ${Math.round(img.position.width)}x${Math.round(img.position.height)}`);
+            console.log(`     可視: ${img.isVisible}, ALT: "${img.alt}", クラス: "${img.className}"`);
+            console.log(`     直上親: ${img.immediateParentTag}.${img.immediateParentClass}`);
+            console.log(`     親階層:`);
+            img.parentHierarchy.slice(0, 5).forEach((parent, j) => {
+                console.log(`       L${j}: ${parent.tagName}.${parent.className} "${parent.textContent}"`);
+            });
         });
 
+        // 2. CSSクラス分析（スタンプを含むクラスのみ）
+        console.log(`\n🎨 スタンプ含有CSSクラス分析:`);
+        const stickerClasses = Object.entries(domAnalysis.cssClassAnalysis)
+            .filter(([cls, data]) => data.hasStickerImages)
+            .sort((a, b) => b[1].count - a[1].count);
+        
+        stickerClasses.slice(0, 10).forEach(([className, data]) => {
+            console.log(`  📋 .${className}: ${data.count}個の要素, ${data.elements.length}個がスタンプ含有`);
+            data.elements.forEach((el, i) => {
+                if (i < 2) { // 最初の2個のみ表示
+                    console.log(`    └─ ${el.tagName}: ${el.stickerCount}個のスタンプ (Y:${Math.round(el.rect.y)})`);
+                }
+            });
+        });
+
+        // 3. コンテナ構造分析
+        console.log(`\n📦 コンテナ構造分析: ${domAnalysis.containerStructure.length}個`);
+        domAnalysis.containerStructure
+            .sort((a, b) => b.stickerCount - a.stickerCount) // スタンプ数でソート
+            .forEach((container, i) => {
+                console.log(`\n  📦 コンテナ ${i + 1}: ${container.tagName}.${container.className}`);
+                console.log(`     タイプ: ${container.estimatedType}, スタンプ: ${container.stickerCount}個`);
+                console.log(`     位置: Y=${Math.round(container.position.y)}, サイズ: ${Math.round(container.position.width)}x${Math.round(container.position.height)}`);
+                console.log(`     リスト構造: ${container.hasListStructure}, 子li: ${container.childListItems}個`);
+                console.log(`     テキスト: "${container.textContent.substring(0, 100)}"`);
+            });
+
+        // 4. メイン候補の特別表示
+        console.log(`\n🎯 メイン候補要素: ${domAnalysis.potentialMainElements.length}個`);
+        domAnalysis.potentialMainElements.forEach((el, i) => {
+            console.log(`  🎯 候補 ${i + 1}: ${el.tagName}.${el.className} (${el.stickerCount}個)`);
+            console.log(`     タイプ: ${el.estimatedType}`);
+        });
+
+        // 5. エリア別スタンプ分布
         console.log('\n🏷️ エリア別スタンプ分布:');
         Object.entries(domAnalysis.stickersByArea).forEach(([areaType, stickers]) => {
-            console.log(`  📍 ${areaType}: ${stickers.length}個`);
-            stickers.slice(0, 3).forEach((sticker, i) => {
+            console.log(`\n  📍 ${areaType}: ${stickers.length}個`);
+            stickers.slice(0, 5).forEach((sticker, i) => {
                 console.log(`    ${i + 1}. ${sticker.src.substring(sticker.src.lastIndexOf('/') + 1)} (Y:${Math.round(sticker.position.y)})`);
                 console.log(`       親要素: ${sticker.parentChain[0]?.className}`);
                 console.log(`       近傍テキスト: "${sticker.nearbyText}"`);
             });
         });
 
+        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
         // DOM分析結果に基づいてメインエリアを特定
         console.log('\n🎯 メインスタンプエリア特定中...');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
+        // 🚨 34個の参考画像問題の原因特定 🚨
+        console.log('\n🚨 問題調査: 現在取得されている34個の画像の詳細分析');
+        
+        // すべてのスタンプ画像をY位置でソートして、どこから来ているかを調査
+        const allFoundStickers = Object.values(domAnalysis.stickersByArea).flat();
+        allFoundStickers.sort((a, b) => a.position.y - b.position.y);
+        
+        console.log(`\n📍 発見されたスタンプの位置別詳細 (${allFoundStickers.length}個):`);
+        allFoundStickers.forEach((sticker, i) => {
+            console.log(`  📷 ${i + 1}. Y:${Math.round(sticker.position.y)} - ${sticker.areaType} - ${sticker.src.substring(sticker.src.lastIndexOf('/') + 1)}`);
+            console.log(`       親: ${sticker.parentChain[0]?.className} - "${sticker.nearbyText}"`);
+        });
+
+        // エリア別の詳細分析
+        console.log(`\n📊 エリア別統計:`);
+        Object.entries(domAnalysis.stickersByArea).forEach(([areaType, stickers]) => {
+            if (stickers.length > 0) {
+                const avgY = stickers.reduce((sum, s) => sum + s.position.y, 0) / stickers.length;
+                console.log(`  📍 ${areaType}: ${stickers.length}個 (平均Y位置: ${Math.round(avgY)})`);
+            }
+        });
+
         // メインエリア候補をスコアリング
         let mainAreaCandidates = [];
         if (domAnalysis.stickersByArea['main-candidate']) {
             mainAreaCandidates = domAnalysis.stickersByArea['main-candidate'];
-            console.log(`✅ main-candidate エリアで ${mainAreaCandidates.length}個のスタンプを発見`);
+            console.log(`\n✅ main-candidate エリアで ${mainAreaCandidates.length}個のスタンプを発見`);
         } else {
             // フォールバック: 最も多くのスタンプを含むエリアを選択（但し除外エリアは除く）
             const excludedAreas = ['sample', 'related', 'other-works', 'header-area', 'sidebar'];
             let maxCount = 0;
             let bestArea = '';
             
+            console.log(`\n🔄 フォールバック分析: 除外エリア以外で最大数を探索`);
+            console.log(`   除外対象: ${excludedAreas.join(', ')}`);
+            
             Object.entries(domAnalysis.stickersByArea).forEach(([areaType, stickers]) => {
+                console.log(`   📊 ${areaType}: ${stickers.length}個 (除外対象: ${excludedAreas.includes(areaType)})`);
                 if (!excludedAreas.includes(areaType) && stickers.length > maxCount) {
                     maxCount = stickers.length;
                     bestArea = areaType;
@@ -541,7 +715,7 @@ class StickerCapture {
                 }
             });
             
-            console.log(`🔄 フォールバック: ${bestArea}エリアで${mainAreaCandidates.length}個のスタンプを選択`);
+            console.log(`\n🔄 フォールバック結果: ${bestArea}エリアで${mainAreaCandidates.length}個のスタンプを選択`);
         }
 
         // メインエリアが見つからない場合の詳細調査
