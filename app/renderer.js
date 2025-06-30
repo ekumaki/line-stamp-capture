@@ -23,16 +23,28 @@ let currentOutputFolder = '';
 
 // 初期化
 document.addEventListener('DOMContentLoaded', () => {
-    initializeApp();
+    console.log('🚀 DOMContentLoaded - アプリ初期化開始');
+    try {
+        initializeApp();
+        console.log('✅ アプリ初期化完了');
+    } catch (error) {
+        console.error('❌ アプリ初期化エラー:', error);
+    }
 });
 
 function initializeApp() {
+    console.log('🔧 setupEventListeners を実行中...');
     setupEventListeners();
+    
+    console.log('🔧 updateUI を実行中...');
     updateUI();
     
     // デフォルトの保存先を設定
+    console.log('📁 デフォルト保存先を設定中...');
     const defaultPath = path.join(process.cwd(), 'captures');
+    console.log(`📁 計算されたデフォルトパス: "${defaultPath}"`);
     outputPath.textContent = defaultPath;
+    console.log(`📁 outputPath.textContent 設定完了: "${outputPath.textContent}"`);
 }
 
 function setupEventListeners() {
@@ -113,26 +125,40 @@ function generateOutputFolder(productId) {
 }
 
 async function handleStart() {
-    if (isCapturing) return;
+    console.log('🚀 handleStart が呼び出されました');
+    
+    if (isCapturing) {
+        console.log('⚠️ 既にキャプチャ中です');
+        return;
+    }
     
     const url = urlInput.value.trim();
+    console.log(`📝 入力されたURL: "${url}"`);
+    
     if (!url.startsWith('https://store.line.me/stickershop/product/')) {
+        console.log('❌ 無効なURL形式');
         alert('有効なLINE STOREのスタンプURLを入力してください');
         return;
     }
     
     const productId = extractProductId(url);
+    console.log(`🆔 抽出されたproductId: "${productId}"`);
+    
     if (!productId) {
+        console.log('❌ productID抽出失敗');
         alert('URLから商品IDを取得できませんでした');
         return;
     }
     
     try {
+        console.log('🔄 キャプチャプロセスを開始...');
         isCapturing = true;
         updateUI();
         
         // 出力フォルダのベースパスを設定
         const baseOutputDir = path.dirname(outputPath.textContent);
+        console.log(`📁 出力ベースディレクトリ: "${baseOutputDir}"`);
+        console.log(`📁 出力先フルパス: "${outputPath.textContent}"`);
         
         // UI更新
         progressText.textContent = '初期化中...';
@@ -142,14 +168,21 @@ async function handleStart() {
         // ブラウザオーバーレイを非表示（実際のキャプチャはバックグラウンドで実行）
         browserOverlay.classList.add('hidden');
         
+        console.log('🎯 StickerCaptureインスタンスを作成中...');
+        
         // キャプチャを実行
         const capture = new StickerCapture();
+        console.log('✅ StickerCaptureインスタンス作成完了');
+        
+        console.log('🚀 captureStickers メソッドを呼び出し中...');
         const result = await capture.captureStickers(url, baseOutputDir, {
             browserType: 'chromium',
             headless: false,
             waitSeconds: 30,
             onProgress: updateCaptureProgress
         });
+        
+        console.log('🎉 captureStickers 完了、結果:', result);
         
         if (result.success) {
             currentOutputFolder = result.outputDir;
@@ -169,8 +202,12 @@ async function handleStart() {
         }
         
     } catch (error) {
-        console.error('開始エラー:', error);
-        alert(`エラーが発生しました: ${error.message}`);
+        console.error('❌ 開始エラー (詳細):', error);
+        console.error('❌ エラースタック:', error.stack);
+        console.error('❌ エラー名:', error.name);
+        console.error('❌ エラーメッセージ:', error.message);
+        
+        alert(`エラーが発生しました: ${error.message}\n\n詳細はコンソールログを確認してください。`);
         
         // エラー時のUI復旧
         progressText.textContent = 'エラー';
@@ -178,6 +215,7 @@ async function handleStart() {
         progressBar.style.width = '0%';
         
     } finally {
+        console.log('🏁 handleStart 完了、キャプチャフラグをリセット');
         isCapturing = false;
         updateUI();
     }
