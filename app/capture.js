@@ -452,20 +452,33 @@ class StickerCapture {
             // 🚨 緊急メインエリア探索 🚨
             console.log('🚨 緊急メインエリア探索を開始...');
             
-            // 1. より幅広いセレクターでメインスタンプを探索
+            // 1. より幅広いセレクターでメインスタンプを探索（実際のスタンプ画像重視）
             const emergencySelectors = [
-                'ul img[src*="sticker"]',
-                'li img[src*="sticker"]', 
-                '[class*="sticker"] img',
-                '[class*="Sticker"] img',
-                '[class*="mdCMN"] img[src*="sticker"]',
-                '[class*="mdIco"] img[src*="sticker"]',
-                'div[class*="09"] img[src*="sticker"]',
-                '.product img[src*="sticker"]',
-                '#sticker img[src*="sticker"]',
+                // 実際のスタンプ画像を優先（main.pngではない）
+                'img[src*="sticker"]:not([src*="main.png"])',
+                'img[src*="obs.line"]:not([src*="main.png"])',
+                'ul img[src*="sticker"]:not([src*="main.png"])',
+                'li img[src*="sticker"]:not([src*="main.png"])',
+                
+                // サイズ指定でフィルタ（実際のスタンプは特定サイズ）
                 'img[src*="sticker"][src*="w/96"]',
-                'img[src*="sticker"][src*="w/180"]',
-                'img[src*="sticker"][src*="w/230"]'
+                'img[src*="sticker"][src*="w/180"]', 
+                'img[src*="sticker"][src*="w/230"]',
+                'img[src*="sticker"][src*="w/300"]',
+                
+                // LINE STOREの実際のスタンプパターン
+                'img[src*="stickershop"]:not([src*="main.png"])',
+                'img[src*="obs.line-scdn.net"]:not([src*="main.png"])',
+                
+                // クラスベース（サムネイル除外）
+                '[class*="sticker"] img:not([src*="main.png"])',
+                '[class*="Sticker"] img:not([src*="main.png"])',
+                '[class*="mdCMN"] img[src*="sticker"]:not([src*="main.png"])',
+                '[class*="mdIco"] img[src*="sticker"]:not([src*="main.png"])',
+                
+                // フォールバック（全てのスタンプ画像）
+                'img[src*="sticker"]',
+                'img[src*="obs.line"]'
             ];
             
             emergencySelectors.forEach((selector, index) => {
@@ -861,11 +874,38 @@ class StickerCapture {
                 };
             });
 
-            // 位置とサイズで適切なメインスタンプをフィルタ
+            // 位置とサイズ、ファイル名で適切なメインスタンプをフィルタ
             const validMainStickers = emergencyElements.filter(el => {
-                return el.width >= 80 && el.height >= 80 && // 十分なサイズ
-                       el.y > 400 && el.y < 3000 && // メインエリアの位置範囲
-                       el.x < window.innerWidth * 0.8; // サイドバー外
+                // main.png (サムネイル) を除外
+                const isNotThumbnail = !el.originalSrc.includes('main.png');
+                
+                // 実際のスタンプファイル名パターンをチェック
+                const hasValidStickerPattern = el.originalSrc.includes('sticker') || 
+                                             el.originalSrc.includes('obs.line') ||
+                                             /\/\d+\.png/.test(el.originalSrc) || // 数字.png パターン
+                                             /sticker_\d+/.test(el.originalSrc); // sticker_数字 パターン
+                
+                // サイズチェック（より寛容に）
+                const hasValidSize = el.width >= 50 && el.height >= 50;
+                
+                // Y位置チェック（メインコンテンツエリア）
+                const isInMainContentArea = el.y > 600 && el.y < 4000; // より広い範囲
+                
+                // X位置チェック（サイドバー外）
+                const isNotInSidebar = el.x < window.innerWidth * 0.8;
+                
+                console.log(`🔍 フィルタチェック: ${el.originalSrc.substring(el.originalSrc.lastIndexOf('/') + 1)}`);
+                console.log(`  - サムネイルでない: ${isNotThumbnail}`);
+                console.log(`  - スタンプパターン: ${hasValidStickerPattern}`);
+                console.log(`  - サイズ: ${hasValidSize} (${el.width}x${el.height})`);
+                console.log(`  - Y位置: ${isInMainContentArea} (Y:${el.y})`);
+                console.log(`  - サイドバー外: ${isNotInSidebar} (X:${el.x})`);
+                
+                return isNotThumbnail && 
+                       hasValidStickerPattern && 
+                       hasValidSize && 
+                       isInMainContentArea && 
+                       isNotInSidebar;
             });
 
             if (validMainStickers.length > 0) {
