@@ -452,9 +452,19 @@ class StickerCapture {
             // 🚨 緊急メインエリア探索 🚨
             console.log('🚨 緊急メインエリア探索を開始...');
             
-            // 1. より幅広いセレクターでメインスタンプを探索（実際のスタンプ画像重視）
+            // 1. 🎯 正確なターゲット: CSS background-imageのスタンプを探索
             const emergencySelectors = [
-                // 実際のスタンプ画像を優先（main.pngではない）
+                // 🎯 メインターゲット: span.mdCMN09Image (CSS background-image)
+                'span.mdCMN09Image',
+                '.mdCMN09Image',
+                
+                // 類似のCSS background-image要素
+                'span[style*="background-image"]',
+                'div[style*="background-image"]',
+                '[style*="background-image"][style*="sticker"]',
+                '[style*="background-image"][style*="line-scdn"]',
+                
+                // 従来のimg要素（フォールバック）
                 'img[src*="sticker"]:not([src*="main.png"])',
                 'img[src*="obs.line"]:not([src*="main.png"])',
                 'ul img[src*="sticker"]:not([src*="main.png"])',
@@ -489,15 +499,44 @@ class StickerCapture {
                         elements.forEach((el, i) => {
                             if (i < 5) { // 最初の5個のみ記録
                                 const rect = el.getBoundingClientRect();
-                                analysis.emergencyMainSearch.push({
-                                    selector,
-                                    index: i,
-                                    src: el.src,
-                                    position: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-                                    className: el.className || '',
-                                    parentClassName: el.parentElement?.className || '',
-                                    grandParentClassName: el.parentElement?.parentElement?.className || ''
-                                });
+                                
+                                // 🎯 CSS background-image から URL を抽出
+                                let src = el.src || ''; // img要素の場合
+                                
+                                // CSS background-imageの場合
+                                if (!src && el.style && el.style.backgroundImage) {
+                                    const bgMatch = el.style.backgroundImage.match(/url\(["']?(.*?)["']?\)/);
+                                    if (bgMatch && bgMatch[1]) {
+                                        src = bgMatch[1];
+                                        console.log(`🎯 CSS background-image発見: ${src.substring(src.lastIndexOf('/') + 1)}`);
+                                    }
+                                }
+                                
+                                // computedStyleからも確認（フォールバック）
+                                if (!src) {
+                                    const computedStyle = window.getComputedStyle(el);
+                                    if (computedStyle.backgroundImage && computedStyle.backgroundImage !== 'none') {
+                                        const bgMatch = computedStyle.backgroundImage.match(/url\(["']?(.*?)["']?\)/);
+                                        if (bgMatch && bgMatch[1]) {
+                                            src = bgMatch[1];
+                                            console.log(`🎯 Computed background-image発見: ${src.substring(src.lastIndexOf('/') + 1)}`);
+                                        }
+                                    }
+                                }
+                                
+                                if (src) {
+                                    analysis.emergencyMainSearch.push({
+                                        selector,
+                                        index: i,
+                                        src: src,
+                                        position: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                                        className: el.className || '',
+                                        parentClassName: el.parentElement?.className || '',
+                                        grandParentClassName: el.parentElement?.parentElement?.className || '',
+                                        elementType: el.tagName.toLowerCase(),
+                                        isBackgroundImage: !el.src // CSS background-imageかどうか
+                                    });
+                                }
                             }
                         });
                     }
@@ -882,8 +921,10 @@ class StickerCapture {
                 // 実際のスタンプファイル名パターンをチェック
                 const hasValidStickerPattern = el.originalSrc.includes('sticker') || 
                                              el.originalSrc.includes('obs.line') ||
+                                             el.originalSrc.includes('line-scdn.net') || // LINE CDN
                                              /\/\d+\.png/.test(el.originalSrc) || // 数字.png パターン
-                                             /sticker_\d+/.test(el.originalSrc); // sticker_数字 パターン
+                                             /sticker_\d+/.test(el.originalSrc) || // sticker_数字 パターン
+                                             /\/sticker\/\d+\//.test(el.originalSrc); // /sticker/数字/ パターン
                 
                 // サイズチェック（より寛容に）
                 const hasValidSize = el.width >= 50 && el.height >= 50;
