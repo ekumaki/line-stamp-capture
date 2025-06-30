@@ -412,10 +412,164 @@ class StickerCapture {
         });
         console.log('📄 ページ情報:', pageInfo);
 
-        // 段階的にセレクターを試行
+        // 詳細なDOM構造調査を実行
+        console.log('🔍 詳細DOM構造調査を開始...');
+        const domAnalysis = await this.page.evaluate(() => {
+            const analysis = {
+                containerStructure: [],
+                stickersByArea: {},
+                suspiciousElements: []
+            };
+
+            // 主要コンテナの分析
+            const containers = document.querySelectorAll('div, section, ul, main, article');
+            containers.forEach((container, index) => {
+                const className = container.className || 'no-class';
+                const id = container.id || 'no-id';
+                const stickerImages = container.querySelectorAll('img[src*="sticker"]');
+                const allImages = container.querySelectorAll('img');
+                
+                if (stickerImages.length > 0) {
+                    const rect = container.getBoundingClientRect();
+                    analysis.containerStructure.push({
+                        index,
+                        tagName: container.tagName,
+                        className,
+                        id,
+                        stickerCount: stickerImages.length,
+                        allImageCount: allImages.length,
+                        position: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                        textContent: container.textContent?.substring(0, 100) || 'no-text'
+                    });
+                }
+            });
+
+            // スタンプ画像の詳細分析（エリア別）
+            const allStickerImages = document.querySelectorAll('img[src*="sticker"]');
+            allStickerImages.forEach((img, index) => {
+                const rect = img.getBoundingClientRect();
+                let parentChain = [];
+                let currentParent = img.parentElement;
+                
+                // 親要素を5レベルまで追跡
+                for (let i = 0; i < 5 && currentParent; i++) {
+                    parentChain.push({
+                        tagName: currentParent.tagName,
+                        className: currentParent.className || 'no-class',
+                        id: currentParent.id || 'no-id'
+                    });
+                    currentParent = currentParent.parentElement;
+                }
+
+                // エリア分類の試行
+                let areaType = 'unknown';
+                const parentText = img.closest('div, section, article')?.textContent?.toLowerCase() || '';
+                const parentClasses = parentChain.map(p => p.className).join(' ').toLowerCase();
+
+                if (parentText.includes('サンプル') || parentText.includes('sample') || parentText.includes('preview')) {
+                    areaType = 'sample';
+                } else if (parentText.includes('関連') || parentText.includes('related') || parentText.includes('recommend')) {
+                    areaType = 'related';
+                } else if (parentText.includes('他の作品') || parentText.includes('other') || parentText.includes('more')) {
+                    areaType = 'other-works';
+                } else if (parentClasses.includes('mdcmn09') || parentClasses.includes('stickerlist')) {
+                    areaType = 'main-candidate';
+                } else if (rect.y < 300) {
+                    areaType = 'header-area';
+                } else if (rect.x > window.innerWidth * 0.7) {
+                    areaType = 'sidebar';
+                }
+
+                const stickerInfo = {
+                    index,
+                    src: img.src,
+                    alt: img.alt || 'no-alt',
+                    position: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                    parentChain,
+                    areaType,
+                    nearbyText: parentText.substring(0, 50)
+                };
+
+                if (!analysis.stickersByArea[areaType]) {
+                    analysis.stickersByArea[areaType] = [];
+                }
+                analysis.stickersByArea[areaType].push(stickerInfo);
+            });
+
+            return analysis;
+        });
+
+        // DOM分析結果を詳細表示
+        console.log('📊 DOM構造分析結果:');
+        console.log(`📦 スタンプを含むコンテナ: ${domAnalysis.containerStructure.length}個`);
+        
+        domAnalysis.containerStructure.forEach((container, i) => {
+            console.log(`  ${i + 1}. ${container.tagName}.${container.className} (${container.stickerCount}個のスタンプ)`);
+            console.log(`     位置: Y=${Math.round(container.position.y)}, サイズ: ${Math.round(container.position.width)}x${Math.round(container.position.height)}`);
+            console.log(`     テキスト: "${container.textContent}"`);
+        });
+
+        console.log('\n🏷️ エリア別スタンプ分布:');
+        Object.entries(domAnalysis.stickersByArea).forEach(([areaType, stickers]) => {
+            console.log(`  📍 ${areaType}: ${stickers.length}個`);
+            stickers.slice(0, 3).forEach((sticker, i) => {
+                console.log(`    ${i + 1}. ${sticker.src.substring(sticker.src.lastIndexOf('/') + 1)} (Y:${Math.round(sticker.position.y)})`);
+                console.log(`       親要素: ${sticker.parentChain[0]?.className}`);
+                console.log(`       近傍テキスト: "${sticker.nearbyText}"`);
+            });
+        });
+
+        // DOM分析結果に基づいてメインエリアを特定
+        console.log('\n🎯 メインスタンプエリア特定中...');
+        
+        // メインエリア候補をスコアリング
+        let mainAreaCandidates = [];
+        if (domAnalysis.stickersByArea['main-candidate']) {
+            mainAreaCandidates = domAnalysis.stickersByArea['main-candidate'];
+            console.log(`✅ main-candidate エリアで ${mainAreaCandidates.length}個のスタンプを発見`);
+        } else {
+            // フォールバック: 最も多くのスタンプを含むエリアを選択（但し除外エリアは除く）
+            const excludedAreas = ['sample', 'related', 'other-works', 'header-area', 'sidebar'];
+            let maxCount = 0;
+            let bestArea = '';
+            
+            Object.entries(domAnalysis.stickersByArea).forEach(([areaType, stickers]) => {
+                if (!excludedAreas.includes(areaType) && stickers.length > maxCount) {
+                    maxCount = stickers.length;
+                    bestArea = areaType;
+                    mainAreaCandidates = stickers;
+                }
+            });
+            
+            console.log(`🔄 フォールバック: ${bestArea}エリアで${mainAreaCandidates.length}個のスタンプを選択`);
+        }
+
+        // メインエリアが見つからない場合の詳細調査
+        if (mainAreaCandidates.length === 0) {
+            console.log('⚠️ メインエリア候補が見つからないため、より詳細な調査を実行...');
+            
+            // 位置ベースでのメインエリア推定
+            const allStickers = Object.values(domAnalysis.stickersByArea).flat();
+            
+            // 中央エリア（サイドバーでない）で、ヘッダーエリアでもない画像を探す
+            const centralStickers = allStickers.filter(sticker => {
+                return sticker.position.x < window.innerWidth * 0.7 && // サイドバーでない
+                       sticker.position.y > 300 && // ヘッダーエリアでない
+                       sticker.position.width >= 80 && // 十分なサイズ
+                       sticker.position.height >= 80;
+            });
+            
+            console.log(`📍 位置ベース推定: ${centralStickers.length}個の中央エリアスタンプを発見`);
+            
+            if (centralStickers.length > 0) {
+                mainAreaCandidates = centralStickers;
+            }
+        }
+
+        // 段階的にセレクターを試行（メインエリア重視）
         const selectorGroups = [
             {
-                name: 'LINE STORE 標準構造',
+                name: 'LINE STORE メインエリア専用',
                 selectors: [
                     '.mdCMN09Ul .mdCMN09Li .mdCMN09Image',
                     '.mdCMN09Ul li img[src*="sticker"]',
@@ -424,20 +578,17 @@ class StickerCapture {
                 ]
             },
             {
-                name: '代替構造検索',
+                name: 'メインコンテンツ領域',
                 selectors: [
-                    'ul[class*="mdCMN09"] li img[src*="sticker"]',
-                    'ul li img[src*="obs.line-scdn.net"][src*="sticker"]',
-                    'li img[src*="sticker"][src*="obs.line"]'
+                    'main img[src*="sticker"]',
+                    '.main-content img[src*="sticker"]',
+                    '#main img[src*="sticker"]',
+                    'ul[class*="mdCMN09"] li img[src*="sticker"]'
                 ]
             },
             {
-                name: '広範囲検索',
-                selectors: [
-                    'img[src*="sticker"][src*="obs.line-scdn.net"]',
-                    'img[src*="sticker"]',
-                    'img[src*="obs.line"][alt*="sticker"]'
-                ]
+                name: '分析結果ベース選択',
+                selectors: ['ANALYSIS_BASED'] // 特別なマーカー
             }
         ];
 
@@ -451,33 +602,115 @@ class StickerCapture {
             
             for (const selector of group.selectors) {
                 try {
+                    // 分析結果ベースの特別処理
+                    if (selector === 'ANALYSIS_BASED') {
+                        console.log(`  🔍 分析結果ベース選択: ${mainAreaCandidates.length}個の候補`);
+                        
+                        if (mainAreaCandidates.length > 0) {
+                            // DOM分析で特定したメインエリアの画像を直接使用
+                            const elementInfo = mainAreaCandidates.map((candidate, index) => {
+                                // 高解像度版のURLを探す
+                                let highResSrc = candidate.src;
+                                if (candidate.src.includes('/w/')) {
+                                    highResSrc = candidate.src.replace(/\/w\/\d+/, '/w/300');
+                                } else if (candidate.src.includes('=w')) {
+                                    highResSrc = candidate.src.replace(/=w\d+/, '=w300');
+                                }
+
+                                return {
+                                    index,
+                                    src: highResSrc,
+                                    originalSrc: candidate.src,
+                                    alt: candidate.alt || '',
+                                    x: candidate.position.x,
+                                    y: candidate.position.y,
+                                    width: candidate.position.width,
+                                    height: candidate.position.height,
+                                    visible: true,
+                                    isSticker: true,
+                                    selector: 'ANALYSIS_BASED',
+                                    area: 'main-verified',
+                                    areaType: candidate.areaType,
+                                    parentChain: candidate.parentChain
+                                };
+                            });
+
+                            console.log(`📊 分析ベース選択: ${elementInfo.length}個のメインスタンプを特定`);
+
+                            if (elementInfo.length > maxCount) {
+                                maxCount = elementInfo.length;
+                                bestElements = elementInfo;
+                                foundGroupName = group.name;
+                                console.log(`✅ 分析ベース選択が最良候補 (${elementInfo.length}個)`);
+                            }
+                        }
+                        continue;
+                    }
+
                     await this.page.waitForTimeout(300);
                     const count = await this.page.locator(selector).count();
                     console.log(`  🔍 '${selector}': ${count}個`);
 
                     if (count > 0) {
-                        // 要素の詳細情報を取得
+                        // 要素の詳細情報を取得（強化された除外ロジック付き）
                         const elementInfo = await this.page.evaluate((sel) => {
                         const elements = document.querySelectorAll(sel);
                         const uniqueImages = new Map();
 
                         Array.from(elements).forEach((el, index) => {
+                            // 除外エリアの厳密チェック
+                            let parentElement = el.parentElement;
+                            let isInExcludedArea = false;
+                            
+                            // 親要素を7レベルまでチェック（除外エリア判定）
+                            for (let i = 0; i < 7 && parentElement; i++) {
+                                const className = (parentElement.className || '').toLowerCase();
+                                const id = (parentElement.id || '').toLowerCase();
+                                const textContent = (parentElement.textContent || '').toLowerCase();
+                                
+                                // 除外するエリアの判定を強化
+                                if (className.includes('related') || 
+                                    className.includes('recommend') || 
+                                    className.includes('similar') ||
+                                    className.includes('sample') ||
+                                    className.includes('preview') ||
+                                    className.includes('example') ||
+                                    className.includes('sidebar') ||
+                                    className.includes('aside') ||
+                                    id.includes('related') ||
+                                    id.includes('recommend') ||
+                                    id.includes('sample') ||
+                                    id.includes('sidebar') ||
+                                    textContent.includes('サンプル') ||
+                                    textContent.includes('関連') ||
+                                    textContent.includes('他の作品') ||
+                                    textContent.includes('おすすめ')) {
+                                    isInExcludedArea = true;
+                                    break;
+                                }
+                                parentElement = parentElement.parentElement;
+                            }
+
+                            if (isInExcludedArea) {
+                                return; // 除外エリアの画像はスキップ
+                            }
+
                             const rect = el.getBoundingClientRect();
                             let src = el.src || el.dataset.src || el.dataset.original || '';
                             
-                            // 基本的なスタンプ判定（まずは見つけることを優先）
-                            const isStickerImage = src.includes('sticker') || 
-                                                 src.includes('obs.line') ||
-                                                 el.alt?.includes('sticker') ||
-                                                 el.className?.includes('sticker');
+                            // メインスタンプの判定条件を厳密化
+                            const isStickerImage = src.includes('sticker') && 
+                                                 (src.includes('obs.line') || src.includes('stickershop'));
                             
-                            // 基本的なサイズチェック
-                            const hasValidSize = rect.width >= 50 && rect.height >= 50;
+                            // 位置による除外（メインエリア外をフィルタ）
+                            const isInMainArea = rect.y > 250 && // ヘッダー下
+                                               rect.x < window.innerWidth * 0.75 && // サイドバー外
+                                               rect.y < window.innerHeight * 1.5; // 無限スクロール上限
                             
-                            // 画面内にあるかチェック
-                            const isVisible = rect.width > 0 && rect.height > 0 && rect.y >= 0;
+                            // 十分なサイズがあるかチェック
+                            const hasValidSize = rect.width >= 80 && rect.height >= 80;
                             
-                            if (isStickerImage && hasValidSize && isVisible) {
+                            if (isStickerImage && hasValidSize && isInMainArea && rect.width > 0 && rect.height > 0) {
                                 // 高解像度版のURLを探す
                                 let highResSrc = src;
                                 if (src.includes('/w/')) {
@@ -501,7 +734,7 @@ class StickerCapture {
                                         visible: true,
                                         isSticker: true,
                                         selector: sel,
-                                        area: 'main' // メインエリアであることを明示
+                                        area: 'main-filtered'
                                     });
                                 }
                             }
@@ -510,7 +743,7 @@ class StickerCapture {
                         return Array.from(uniqueImages.values());
                     }, selector);
 
-                        console.log(`📊 セレクター '${selector}': ${elementInfo.length}個のスタンプを発見`);
+                        console.log(`📊 セレクター '${selector}': ${elementInfo.length}個のメインスタンプを発見`);
 
                         if (elementInfo.length > maxCount) {
                             maxCount = elementInfo.length;
@@ -524,9 +757,9 @@ class StickerCapture {
                 }
             }
             
-            // このグループで十分な数が見つかったら次のグループはスキップ
-            if (bestElements.length >= 20) {
-                console.log(`🎯 ${group.name}で十分な数(${bestElements.length}個)を発見、検索終了`);
+            // 十分な数のメインスタンプが見つかったら終了
+            if (bestElements.length >= 10 && bestElements[0]?.area?.includes('main')) {
+                console.log(`🎯 ${group.name}で十分な数(${bestElements.length}個)のメインスタンプを発見、検索終了`);
                 break;
             }
         }
