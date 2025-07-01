@@ -475,7 +475,21 @@ class StickerCapture {
                 }
             });
             
-            return results;
+            // 重複除去: 同じsrcを持つ要素を1つにまとめる
+            const uniqueResults = [];
+            const seenSrcs = new Set();
+            
+            results.forEach(result => {
+                if (!seenSrcs.has(result.src)) {
+                    seenSrcs.add(result.src);
+                    uniqueResults.push(result);
+                } else {
+                    console.log(`🔄 重複除去: ${result.src.substring(result.src.lastIndexOf('/') + 1)}`);
+                }
+            });
+            
+            console.log(`🧹 重複除去: ${results.length}個 → ${uniqueResults.length}個`);
+            return uniqueResults;
         });
         
         console.log(`🎯 span.mdCMN09Image要素: ${spanElements.length}個を発見`);
