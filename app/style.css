@@ -158,6 +158,11 @@ section {
     background: #138496;
 }
 
+/* 機能無効化のためブラウザセクションを非表示 */
+#browser-section {
+    display: none;
+}
+
 /* ブラウザセクション */
 .browser-section {
     flex: 1;
