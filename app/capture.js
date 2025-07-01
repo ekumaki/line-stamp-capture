@@ -172,6 +172,26 @@ class StickerCapture {
      * ポップアップの手動クローズを待機
      */
     async waitForManualPopupDismissal(waitSeconds = 30, onProgress = null) {
+        // 機能無効化: 待機せずに自動クリーンアップを試行して即時続行
+        console.log('🖱️ ポップアップ待機は現在無効です。自動クリーンアップを試行します。');
+        if (onProgress) {
+            onProgress(25, 100, 'ポップアップを自動処理中...');
+        }
+        
+        try {
+            // ESCキーを数回押して、モーダルダイアログを閉じる試み
+            for (let i = 0; i < 3; i++) {
+                await this.page.keyboard.press('Escape');
+                await this.page.waitForTimeout(250);
+            }
+            console.log('✅ 自動クリーンアップ試行完了');
+        } catch (error) {
+            console.error('⚠️ 自動クリーンアップ中にエラー:', error.message);
+        }
+        
+        return true; // 待機せずに常に成功として続行
+
+        /*  << 元の処理は以下にコメントアウトして残します >>
         console.log('🖱️ 手動ポップアップ閉じモードを開始...');
         
         // 元のURLを保存（ページ遷移を監視するため）
@@ -361,6 +381,7 @@ class StickerCapture {
 
         console.log('⚠️ ポップアップが残っている可能性があります');
         return false;
+        */
     }
 
     /**
