@@ -22,8 +22,22 @@ class StickerCapture {
      */
     generateOutputFolder(baseDir, productId) {
         const now = new Date();
-        const dateStr = now.toISOString().slice(0, 19).replace(/[:-]/g, '').replace('T', '_');
-        return path.join(baseDir, `${productId}_${dateStr}`);
+        // 日付 + 時間(ミリ秒付き) で一意な文字列を生成
+        const pad = (num, size = 2) => num.toString().padStart(size, '0');
+        const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_` +
+                        `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}` +
+                        `${pad(now.getMilliseconds(), 3)}`;
+        // productId が渡されていれば先頭に付与
+        const baseName = productId ? `${productId}_${dateStr}` : dateStr;
+
+        // フォルダ名の重複を避ける
+        let folderPath = path.join(baseDir, baseName);
+        let suffix = 1;
+        while (fs.existsSync(folderPath)) {
+            folderPath = path.join(baseDir, `${baseName}_${suffix}`);
+            suffix += 1;
+        }
+        return folderPath;
     }
 
     /**
