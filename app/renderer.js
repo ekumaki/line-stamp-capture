@@ -118,10 +118,21 @@ function extractProductId(url) {
     return match ? match[1] : null;
 }
 
-function generateOutputFolder(productId) {
+function generateOutputFolder() {
     const now = new Date();
-    const dateStr = now.toISOString().slice(0, 19).replace(/[:-]/g, '').replace('T', '_');
-    return path.join(outputPath.textContent, `${productId}_${dateStr}`);
+    const pad = (num, size = 2) => num.toString().padStart(size, '0');
+    const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_` +
+                    `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}` +
+                    `${pad(now.getMilliseconds(), 3)}`;
+
+    let folderPath = path.join(outputPath.textContent, dateStr);
+    let suffix = 1;
+    const fs = require('fs');
+    while (fs.existsSync(folderPath)) {
+        folderPath = path.join(outputPath.textContent, `${dateStr}_${suffix}`);
+        suffix += 1;
+    }
+    return folderPath;
 }
 
 async function handleStart() {
